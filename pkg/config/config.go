@@ -12,6 +12,11 @@ var (
 	ErrInvalidConfig  = errors.New("invalid config")
 )
 
+// Defaultable allows a configuration struct to set its own default values.
+type Defaultable interface {
+	SetDefaults()
+}
+
 // Validatable ensures that the configuration struct provides a validation method.
 type Validatable interface {
 	Validate() error
@@ -30,6 +35,11 @@ func Load(target Validatable, sources ...Source) error {
 	err := validatePointerToStruct(target)
 	if err != nil {
 		return err
+	}
+
+	// Apply defaults if the target implements Defaultable
+	if defaultable, ok := target.(Defaultable); ok {
+		defaultable.SetDefaults()
 	}
 
 	for _, s := range sources {
