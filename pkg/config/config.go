@@ -10,6 +10,7 @@ var (
 	ErrInvalidTarget  = errors.New("invalid target")
 	ErrConfigNotFound = errors.New("config not found")
 	ErrInvalidConfig  = errors.New("invalid config")
+	ErrValidation     = errors.New("validation failed")
 )
 
 // Defaultable allows a configuration struct to set its own default values.
@@ -49,7 +50,12 @@ func Load(target Validatable, sources ...Source) error {
 		}
 	}
 
-	return target.Validate()
+	err = target.Validate()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrValidation, err)
+	}
+
+	return nil
 }
 
 // validatePointerToStruct ensures the target is a non-nil pointer to a struct.
