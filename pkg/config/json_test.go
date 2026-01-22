@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SpaceCafe/go-parts/pkg/config"
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/stretchr/testify/require"
 )
 

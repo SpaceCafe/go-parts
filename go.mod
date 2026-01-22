@@ -1,4 +1,4 @@
-module github.com/SpaceCafe/go-parts
+module github.com/spacecafe/go-parts
 
 go 1.25
 

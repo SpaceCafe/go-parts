@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/SpaceCafe/go-parts/pkg/typeconv"
+	"github.com/spacecafe/go-parts/pkg/typeconv"
 )
 
 var (

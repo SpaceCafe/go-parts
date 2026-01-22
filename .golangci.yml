@@ -19,14 +19,14 @@ linters:
           allow:
             - $gostd
             - github.com/goccy/go-yaml
-            - github.com/SpaceCafe/go-parts
+            - github.com/spacecafe/go-parts
         tests:
           list-mode: strict
           files:
             - $test
           allow:
             - $gostd
-            - github.com/SpaceCafe/go-parts
+            - github.com/spacecafe/go-parts
             - github.com/stretchr/testify
     funcorder:
       constructor: true

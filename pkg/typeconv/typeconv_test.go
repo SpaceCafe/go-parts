@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SpaceCafe/go-parts/pkg/typeconv"
+	"github.com/spacecafe/go-parts/pkg/typeconv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
