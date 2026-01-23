@@ -20,6 +20,7 @@ linters:
             - $gostd
             - github.com/goccy/go-yaml
             - github.com/spacecafe/go-parts
+            - golang.org/x/crypto/bcrypt
         tests:
           list-mode: strict
           files:
