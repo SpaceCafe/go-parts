@@ -13,74 +13,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var ErrMock = errors.New("stop error")
-
-type MockService struct {
-	StopTimeout time.Duration
-	StopCalled  chan bool
-	ReturnError error
-}
-
-func (m *MockService) Start(_ context.Context) error {
-	m.StopCalled = make(chan bool, 1)
-
-	return nil
-}
-
-func (m *MockService) Stop(_ context.Context) error {
-	m.StopCalled <- true
-
-	<-time.After(m.StopTimeout)
-
-	return m.ReturnError
-}
-
-func sendSignal(t *testing.T, signal os.Signal) {
-	t.Helper()
-
-	p, err := os.FindProcess(os.Getpid())
-	require.NoError(t, err)
-
-	err = p.Signal(signal)
-	require.NoError(t, err)
-}
-
 //nolint:paralleltest // This test is not safe to run in parallel.
 func TestShutdown_Track(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     *shutdown.Config
 		arg     any
+		cfg     *shutdown.Config
 		wantErr assert.ErrorAssertionFunc
+		name    string
 	}{
 		{
 			name:    "timeout greater than stop timeout",
 			cfg:     &shutdown.Config{Timeout: time.Second * 2, Force: true},
-			arg:     &MockService{StopTimeout: time.Second},
+			arg:     &mockService{StopTimeout: time.Second},
 			wantErr: assert.NoError,
 		},
 		{
 			name:    "timeout less than stop timeout",
 			cfg:     &shutdown.Config{Timeout: 0, Force: true},
-			arg:     &MockService{StopTimeout: time.Second},
+			arg:     &mockService{StopTimeout: time.Second},
 			wantErr: assert.NoError,
 		},
 		{
 			name:    "timeout greater than stop timeout without force",
 			cfg:     &shutdown.Config{Timeout: time.Second * 2, Force: false},
-			arg:     &MockService{StopTimeout: time.Second},
+			arg:     &mockService{StopTimeout: time.Second},
 			wantErr: assert.NoError,
 		},
 		{
 			name:    "timeout less than stop timeout without force",
 			cfg:     &shutdown.Config{Timeout: 0, Force: false},
-			arg:     &MockService{StopTimeout: time.Second},
+			arg:     &mockService{StopTimeout: time.Second},
 			wantErr: assert.NoError,
 		},
 		{
 			name:    "return error on stop",
 			cfg:     &shutdown.Config{Timeout: time.Second, Force: false},
-			arg:     &MockService{ReturnError: ErrMock},
+			arg:     &mockService{ReturnError: errMock},
 			wantErr: assert.NoError,
 		},
 		{
@@ -120,7 +88,7 @@ func TestShutdown_Track(t *testing.T) {
 				t.Fatal("timeout reached")
 			}
 
-			if v, ok := tt.arg.(*MockService); ok {
+			if v, ok := tt.arg.(*mockService); ok {
 				assert.True(t, <-v.StopCalled)
 			}
 		})
@@ -133,7 +101,7 @@ func TestShutdown_Integration(t *testing.T) {
 	require.NotNil(t, obj.Context())
 	assert.Implements(t, (*context.Context)(nil), obj.Context())
 
-	service := &MockService{StopTimeout: time.Second}
+	service := &mockService{StopTimeout: time.Second}
 	err := obj.Track(service)
 	require.NoError(t, err)
 
@@ -162,4 +130,36 @@ func TestShutdown_Integration(t *testing.T) {
 	assert.True(t, <-service.StopCalled)
 	assert.True(t, testValue)
 	assert.Lessf(t, elapsed, time.Second, "shutdown took too long: %obj", elapsed)
+}
+
+var errMock = errors.New("stop error")
+
+type mockService struct {
+	ReturnError error
+	StopCalled  chan bool
+	StopTimeout time.Duration
+}
+
+func (m *mockService) Start(_ context.Context) error {
+	m.StopCalled = make(chan bool, 1)
+
+	return nil
+}
+
+func (m *mockService) Stop(_ context.Context) error {
+	m.StopCalled <- true
+
+	<-time.After(m.StopTimeout)
+
+	return m.ReturnError
+}
+
+func sendSignal(t *testing.T, signal os.Signal) {
+	t.Helper()
+
+	p, err := os.FindProcess(os.Getpid())
+	require.NoError(t, err)
+
+	err = p.Signal(signal)
+	require.NoError(t, err)
 }

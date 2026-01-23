@@ -22,14 +22,14 @@ func TestEnvSource_Load(t *testing.T) {
 	}
 
 	type Config struct {
+		RefSub  *SubConfig
 		hidden  string
 		Skip    string    `env:"-"`
 		Name    string    `env:"NAME"`
-		Port    int       `env:"PORT"`
 		Tags    []string  `env:"TAGS"`
 		Options []int     `env:"OPTIONS"`
 		Sub     SubConfig `env:"SUB"`
-		RefSub  *SubConfig
+		Port    int       `env:"PORT"`
 	}
 
 	type fields struct {
@@ -42,11 +42,11 @@ func TestEnvSource_Load(t *testing.T) {
 	}
 
 	tests := []struct {
+		args    args
 		name    string
 		fields  fields
-		args    args
-		wantErr bool
 		want    Config
+		wantErr bool
 	}{
 		{
 			name:   "successful load with prefix",

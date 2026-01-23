@@ -31,9 +31,9 @@ func testFileSourceLoad(
 	}
 
 	tests := []struct {
+		args    args
 		name    string
 		fields  fields
-		args    args
 		wantErr bool
 	}{
 		{

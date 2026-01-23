@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	_             Source = (*EnvSource)(nil)
-	ErrConversion        = errors.New("failed to convert environment variable to field type")
+	_ Source = (*EnvSource)(nil)
+
+	ErrConversion = errors.New("config: failed to convert environment variable to field type")
 )
 
 // EnvSource loads configuration from environment variables.

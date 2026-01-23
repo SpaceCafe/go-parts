@@ -20,7 +20,7 @@ const (
 	ExitCodeSigTerm = 128 + int(syscall.SIGTERM) // equals 143
 )
 
-var ErrContextCancelled = errors.New("context cancelled")
+var ErrContextCancelled = errors.New("shutdown: context cancelled")
 
 // Trackable represents an interface for managing the lifecycle of a trackable goroutine.
 type Trackable interface {
@@ -41,9 +41,6 @@ type Shutdown struct {
 	//nolint:containedctx // Shutdown is an extension of context.Context to provide additional functionality.
 	shutdownCtx context.Context
 
-	// waitGroup is used to wait for goroutines to finish.
-	waitGroup sync.WaitGroup
-
 	// Log is the logger instance.
 	Log log.Logger
 
@@ -59,8 +56,12 @@ type Shutdown struct {
 	// cancelShutdownFn is the function to cancel the shutdown context.
 	cancelShutdownFn context.CancelFunc
 
-	// signalCh is a channel that receives OS interrupt and termination signals to handle graceful shutdown.
+	// signalCh is a channel used to receive operating system signals
+	// for handling graceful shutdowns or specific behaviors.
 	signalCh chan os.Signal
+
+	// waitGroup is used to synchronize and wait for the completion of multiple goroutines.
+	waitGroup sync.WaitGroup
 }
 
 // New creates a new Shutdown instance with the provided configuration.
@@ -114,7 +115,7 @@ func (s *Shutdown) Done() <-chan struct{} {
 // Workers are stopped gracefully, but the process stays alive.
 // Use this to stop accepting new connections or long-running tasks.
 func (s *Shutdown) Drain() {
-	s.Log.Info("initializing drain")
+	s.Log.Info("shutdown: initializing drain")
 	s.cancelRuntimeFn()
 
 	go s.observeShutdown(nil)
@@ -129,7 +130,7 @@ func (s *Shutdown) Go(task func(context.Context)) error {
 	}
 
 	s.waitGroup.Add(1)
-	s.Log.Debug("starting task")
+	s.Log.Debug("shutdown: starting task")
 
 	go func() {
 		defer s.waitGroup.Done()
@@ -143,21 +144,21 @@ func (s *Shutdown) Go(task func(context.Context)) error {
 // Shutdown initiates a graceful shutdown manually without waiting for a signal.
 // This is useful for programmatic shutdown scenarios.
 func (s *Shutdown) Shutdown() {
-	s.Log.Info("initializing shutdown")
+	s.Log.Info("shutdown: initializing shutdown")
 	s.cancelRuntimeFn()
 
 	go s.observeShutdown(s.cancelShutdownFn)
 
 	select {
 	case <-s.shutdownCtx.Done():
-		s.Log.Info("shutdown gracefully completed")
+		s.Log.Info("shutdown: shutdown gracefully completed")
 	case <-time.After(s.cfg.Timeout):
 		s.cancelShutdownFn()
-		s.Log.Error("shutdown timed out")
+		s.Log.Error("shutdown: shutdown timed out")
 	}
 
 	if s.cfg.Force {
-		s.Log.Info("shutting down forcefully")
+		s.Log.Info("shutdown: shutting down forcefully")
 		s.ExitFn(ExitCodeSigTerm)
 	}
 }
@@ -182,16 +183,16 @@ func (s *Shutdown) Track(service any) error {
 
 			err := trackable.Stop(s.shutdownCtx)
 			if err != nil {
-				s.Log.Error("failed to stop service", "error", err)
+				s.Log.Error("shutdown: failed to stop service", "error", err)
 			}
 		}()
 
 		err := trackable.Start(s.runtimeCtx)
 		if err != nil {
-			return fmt.Errorf("starting service service: %w", err)
+			return fmt.Errorf("shutdown: starting service service: %w", err)
 		}
 
-		s.Log.Debug("starting service")
+		s.Log.Debug("shutdown: starting service")
 	}
 
 	return nil
@@ -206,7 +207,7 @@ func (s *Shutdown) Wait() {
 
 func (s *Shutdown) observeShutdown(callback func()) {
 	s.waitGroup.Wait()
-	s.Log.Info("all tasks completed")
+	s.Log.Info("shutdown: all tasks completed")
 
 	if callback != nil {
 		callback()

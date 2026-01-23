@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	ErrInvalidTarget  = errors.New("invalid target")
-	ErrConfigNotFound = errors.New("config not found")
-	ErrInvalidConfig  = errors.New("invalid config")
-	ErrValidation     = errors.New("validation failed")
+	ErrInvalidTarget  = errors.New("config: invalid target")
+	ErrConfigNotFound = errors.New("config: config not found")
+	ErrInvalidConfig  = errors.New("config: invalid config")
+	ErrValidation     = errors.New("config: validation failed")
 )
 
 // Defaultable allows a configuration struct to set its own default values.

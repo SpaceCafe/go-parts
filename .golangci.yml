@@ -36,6 +36,8 @@ linters:
       enable-all: true
     gocyclo:
       min-complexity: 20
+    govet:
+      enable-all: true
     tagliatelle:
       case:
         extended-rules:

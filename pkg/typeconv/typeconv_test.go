@@ -27,10 +27,10 @@ func TestConverter_Convert_Int(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		value   string
 		target  any
 		check   func(t *testing.T, target any)
+		name    string
+		value   string
 		wantErr bool
 	}{
 		{
@@ -111,10 +111,10 @@ func TestConverter_Convert_Uint(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		value   string
 		target  any
 		check   func(t *testing.T, target any)
+		name    string
+		value   string
 		wantErr bool
 	}{
 		{
@@ -177,10 +177,10 @@ func TestConverter_Convert_Float(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		value   string
 		target  any
 		check   func(t *testing.T, target any)
+		name    string
+		value   string
 		wantErr bool
 	}{
 		{
@@ -394,11 +394,11 @@ func TestConverter_Convert_Slice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
+		target    any
+		check     func(t *testing.T, target any)
 		name      string
 		value     string
 		separator string
-		target    any
-		check     func(t *testing.T, target any)
 		wantErr   bool
 	}{
 		{

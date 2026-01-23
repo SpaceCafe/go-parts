@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ErrUnsupportedType = errors.New("unsupported type")
-	ErrInvalidValue    = errors.New("invalid value")
+	ErrUnsupportedType = errors.New("typeconv: unsupported type")
+	ErrInvalidValue    = errors.New("typeconv: invalid value")
 )
 
 // Converter handles conversion of string values to various Go types.
@@ -147,7 +147,7 @@ func (c *Converter) setSlice(field reflect.Value, value string) error {
 
 		err := c.setField(elem, part)
 		if err != nil {
-			return fmt.Errorf("slice element %d: %w", i, err)
+			return fmt.Errorf("typeconv: slice element %d: %w", i, err)
 		}
 	}
 

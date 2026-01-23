@@ -7,11 +7,13 @@ import (
 	"github.com/spacecafe/go-parts/pkg/config"
 )
 
+const DefaultTimeout = time.Second * 3
+
 var (
 	_ config.Defaultable = (*Config)(nil)
 	_ config.Validatable = (*Config)(nil)
 
-	ErrInvalidTimeout = errors.New("shutdown timeout must be positive")
+	ErrInvalidTimeout = errors.New("shutdown: timeout must be positive")
 )
 
 type Config struct {
@@ -23,7 +25,7 @@ type Config struct {
 }
 
 func (c *Config) SetDefaults() {
-	c.Timeout = time.Second * 3 //nolint:mnd // Default timeout value
+	c.Timeout = DefaultTimeout
 	c.Force = true
 }
 
