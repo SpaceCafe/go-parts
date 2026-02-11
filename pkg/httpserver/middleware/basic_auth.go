@@ -15,20 +15,33 @@ const authTokenPrefix = "Token "
 
 var (
 	_ config.Defaultable = (*BasicAuthConfig)(nil)
+	_ config.Validatable = (*BasicAuthConfig)(nil)
 
-	ErrMismatchPassword = errors.New("basic-auth: password mismatch")
+	ErrInvalidPrincipals    = errors.New("basic-auth: principals cannot be nil")
+	ErrInvalidTokens        = errors.New("basic-auth: tokens cannot be nil")
+	ErrInvalidAuthenticator = errors.New("basic-auth: authenticator cannot be nil")
+	ErrMismatchPassword     = errors.New("basic-auth: password mismatch")
 
 	//nolint:gochecknoglobals // Maintain a set of predefined bcrypt prefixes that are used throughout the application.
 	BcryptHashPrefixes = []string{"$2a$", "$2b$", "$2x$", "$2y$"}
 )
 
+// Authenticator is a function type that validates a username and password, returning true if authentication succeeds.
 type Authenticator func(username, password string) bool
 
+// BasicAuthConfig holds the configuration for BasicAuth middleware.
 type BasicAuthConfig struct {
-	Principals    map[string]string `json:"principals" yaml:"principals"`
+	// Principals defines a mapping of usernames to their respective passwords for basic authentication.
+	Principals map[string]string `json:"principals" yaml:"principals"`
+
+	// Authenticator validates a username and password.
 	Authenticator Authenticator
-	Tokens        []string `json:"tokens"     yaml:"tokens"`
-	UseTokens     bool
+
+	// Tokens defines a list of pre-approved tokens for token-based authentication.
+	Tokens []string `json:"tokens" yaml:"tokens"`
+
+	// UseTokens indicates whether token-based authentication is enabled in addition to basic authentication.
+	UseTokens bool
 }
 
 func (c *BasicAuthConfig) SetDefaults() {
@@ -36,6 +49,22 @@ func (c *BasicAuthConfig) SetDefaults() {
 	c.Tokens = []string{}
 	c.Authenticator = configAuthenticator(c)
 	c.UseTokens = false
+}
+
+func (c *BasicAuthConfig) Validate() error {
+	if c.Principals == nil {
+		return ErrInvalidPrincipals
+	}
+
+	if c.Tokens == nil {
+		return ErrInvalidTokens
+	}
+
+	if c.Authenticator == nil {
+		return ErrInvalidAuthenticator
+	}
+
+	return nil
 }
 
 func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
@@ -109,7 +138,7 @@ func abortBasicAuth(resp http.ResponseWriter, useTokens bool) {
 		resp.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 	}
 
-	http.Error(resp, "Unauthorized", http.StatusUnauthorized)
+	http.Error(resp, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 }
 
 // constantTimeCompare compares two passwords for equality.
