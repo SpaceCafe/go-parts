@@ -25,21 +25,21 @@ var (
 	_ config.Defaultable = (*Config)(nil)
 	_ config.Validatable = (*Config)(nil)
 
-	ErrInvalidHost     = errors.New("httpserver host must be a valid network address")
+	ErrInvalidHost     = errors.New("httpserver: host must be a valid network address")
 	ErrInvalidBasePath = errors.New(
-		"httpserver base path must be an absolute path without trailing slash",
+		"httpserver: base path must be an absolute path without trailing slash",
 	)
 	ErrMissingCertFile = errors.New(
-		"httpserver cert file must be specified if key file is specified",
+		"httpserver: cert file must be specified if key file is specified",
 	)
 	ErrMissingKeyFile = errors.New(
-		"httpserver key file must be specified if cert file is specified",
+		"httpserver: key file must be specified if cert file is specified",
 	)
-	ErrUnreadableCertFile       = errors.New("httpserver cert file must be readable")
-	ErrUnreadableKeyFile        = errors.New("httpserver key file must be readable")
-	ErrInvalidReadTimeout       = errors.New("httpserver read timeout must be positive")
-	ErrInvalidReadHeaderTimeout = errors.New("httpserver read header timeout must be positive")
-	ErrInvalidPort              = errors.New("httpserver port must be between 1 and 65535")
+	ErrUnreadableCertFile       = errors.New("httpserver: cert file must be readable")
+	ErrUnreadableKeyFile        = errors.New("httpserver: key file must be readable")
+	ErrInvalidReadTimeout       = errors.New("httpserver: read timeout must be positive")
+	ErrInvalidReadHeaderTimeout = errors.New("httpserver: read header timeout must be positive")
+	ErrInvalidPort              = errors.New("httpserver: port must be between 1 and 65535")
 )
 
 // Config defines the essential parameters for serving an http Server.
