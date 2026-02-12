@@ -21,6 +21,7 @@ linters:
             - github.com/goccy/go-yaml
             - github.com/spacecafe/go-parts
             - golang.org/x/crypto/bcrypt
+            - golang.org/x/sys/unix
         tests:
           list-mode: strict
           files:
