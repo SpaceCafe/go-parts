@@ -89,6 +89,17 @@ func (c *Converter) setField(field reflect.Value, value string) error {
 		return setTime(field, value, c.TimeLayout)
 	}
 
+	if field.Type() == reflect.TypeFor[ByteSize]() {
+		parsed, err := ParseByteSize(value)
+		if err != nil {
+			return err
+		}
+
+		field.SetUint(uint64(parsed))
+
+		return nil
+	}
+
 	//nolint:exhaustive // Only handling supported reflect.Kind types; unsupported types handled by default case.
 	switch field.Kind() {
 	case reflect.String:
@@ -147,7 +158,7 @@ func (c *Converter) setSlice(field reflect.Value, value string) error {
 
 		err := c.setField(elem, part)
 		if err != nil {
-			return fmt.Errorf("typeconv: slice element %d: %w", i, err)
+			return fmt.Errorf("typeconv: slice element '%d': %w", i, err)
 		}
 	}
 
@@ -179,7 +190,7 @@ func setFloat(field reflect.Value, value string) error {
 	}
 
 	if field.OverflowFloat(floatVal) {
-		return fmt.Errorf("%w: value %f overflows %s", ErrInvalidValue, floatVal, field.Type())
+		return fmt.Errorf("%w: value '%f' overflows '%s'", ErrInvalidValue, floatVal, field.Type())
 	}
 
 	field.SetFloat(floatVal)
@@ -194,7 +205,7 @@ func setInt(field reflect.Value, value string) error {
 	}
 
 	if field.OverflowInt(intVal) {
-		return fmt.Errorf("%w: value %d overflows %s", ErrInvalidValue, intVal, field.Type())
+		return fmt.Errorf("%w: value '%d' overflows '%s'", ErrInvalidValue, intVal, field.Type())
 	}
 
 	field.SetInt(intVal)
@@ -209,7 +220,7 @@ func setUint(field reflect.Value, value string) error {
 	}
 
 	if field.OverflowUint(uintVal) {
-		return fmt.Errorf("%w: value %d overflows %s", ErrInvalidValue, uintVal, field.Type())
+		return fmt.Errorf("%w: value '%d' overflows '%s'", ErrInvalidValue, uintVal, field.Type())
 	}
 
 	field.SetUint(uintVal)
