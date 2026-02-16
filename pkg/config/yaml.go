@@ -29,3 +29,7 @@ func (s YAMLSource) Load(target any) error {
 
 	return nil
 }
+
+func newYAMLSource(filename string) (*YAMLSource, error) {
+	return &YAMLSource{Path: filename}, nil
+}

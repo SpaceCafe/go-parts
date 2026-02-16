@@ -80,15 +80,18 @@ func (c *MockConfig) Validate() error {
 }
 
 func TestLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
 	// Create a test file.
-	validFile := filepath.Join(t.TempDir(), "config.json")
+	validFile := filepath.Join(tmpDir, "config.json")
 	err := os.WriteFile(validFile, []byte(`{"name": "test-app", "port": 8080}`), 0o600)
 	require.NoError(t, err)
 
 	t.Setenv("APP_PORT", "9090")
 
 	target := &MockConfig{}
-	err = config.Load(target, config.JSONSource{Path: validFile}, config.EnvSource{Prefix: "APP"})
+	err = config.AutoLoad(target, "test-app", "APP")
 	require.NoError(t, err)
 	assert.EqualExportedValues(t, &MockConfig{Name: "test-app", Port: 9090}, target)
 }
