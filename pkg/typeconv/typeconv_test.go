@@ -10,6 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestConverter_Convert_ByteSize(t *testing.T) {
+	t.Parallel()
+
+	var result typeconv.ByteSize
+
+	target := reflect.ValueOf(&result).Elem()
+
+	c := typeconv.New()
+	err := c.Convert(target, "2KiB")
+	require.NoError(t, err)
+	assert.Equal(t, typeconv.ByteSize(2048), result)
+}
+
 func TestConverter_Convert_String(t *testing.T) {
 	t.Parallel()
 

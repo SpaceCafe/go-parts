@@ -4,6 +4,7 @@
 package typeconv
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"reflect"
@@ -81,23 +82,24 @@ func MustConvertTo[T any](value string) T {
 
 // setField sets the field value from the string.
 func (c *Converter) setField(field reflect.Value, value string) error {
+	// Check if the type implements encoding.TextUnmarshaler
+	if field.CanAddr() {
+		if unmarshaler, ok := field.Addr().Interface().(encoding.TextUnmarshaler); ok {
+			err := unmarshaler.UnmarshalText([]byte(value))
+			if err != nil {
+				return fmt.Errorf("%w: failed to unmarshal: %w", ErrInvalidValue, err)
+			}
+
+			return nil
+		}
+	}
+
 	if field.Type() == reflect.TypeFor[time.Duration]() {
 		return setDuration(field, value)
 	}
 
 	if field.Type() == reflect.TypeFor[time.Time]() {
 		return setTime(field, value, c.TimeLayout)
-	}
-
-	if field.Type() == reflect.TypeFor[ByteSize]() {
-		parsed, err := ParseByteSize(value)
-		if err != nil {
-			return err
-		}
-
-		field.SetUint(uint64(parsed))
-
-		return nil
 	}
 
 	//nolint:exhaustive // Only handling supported reflect.Kind types; unsupported types handled by default case.
