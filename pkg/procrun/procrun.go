@@ -114,7 +114,7 @@ func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
 
 // RunWithLimits executes the cmd with specific resource limits.
 func (r *Runner) RunWithLimits(ctx context.Context, cmd *Command, limits *Limits) (*Result, error) {
-	r.Log.Debug("executing cmd", "cmd", cmd, "limits", limits)
+	r.Log.Debug("procrun: executing cmd", "cmd", cmd, "limits", limits)
 
 	if cmd.Path == "" {
 		return nil, ErrInvalidCommandPath
@@ -129,7 +129,7 @@ func (r *Runner) RunWithLimits(ctx context.Context, cmd *Command, limits *Limits
 		defer func() {
 			cleanupErr := r.Cleanup(result)
 			if cleanupErr != nil {
-				r.Log.Error("failed to cleanup", "error", cleanupErr)
+				r.Log.Error("procrun: failed to cleanup", "error", cleanupErr)
 			}
 		}()
 	}
@@ -141,7 +141,7 @@ func (r *Runner) RunWithLimits(ctx context.Context, cmd *Command, limits *Limits
 
 	execCmd := r.buildExecCmd(cmdCtx, cmd, result.WorkDir)
 
-	err = applyProcessAttributes(execCmd, cmd)
+	err = applyProcessAttributes(r.Log, execCmd, cmd)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrProcessStart, err)
 	}
@@ -153,7 +153,7 @@ func (r *Runner) RunWithLimits(ctx context.Context, cmd *Command, limits *Limits
 		return result, fmt.Errorf("%w: %w", ErrProcessStart, err)
 	}
 
-	err = applyProcessLimits(execCmd.Process.Pid, limits)
+	err = applyProcessLimits(r.Log, execCmd.Process.Pid, limits)
 	if err != nil {
 		_ = execCmd.Process.Kill()
 		result.Error = fmt.Errorf("%w: %w", ErrResourceLimit, err)
@@ -173,7 +173,7 @@ func (r *Runner) applyTimeout(
 		return ctx, nil
 	}
 
-	r.Log.Debug("applying timeout to cmd execution", "timeout", cmd.Timeout)
+	r.Log.Debug("procrun: applying timeout to cmd execution", "timeout", cmd.Timeout)
 
 	return context.WithTimeout(ctx, cmd.Timeout)
 }
@@ -188,7 +188,7 @@ func (r *Runner) awaitResult(
 	err := execCmd.Wait()
 	result.Duration = time.Since(startTime)
 
-	r.Log.Debug("cmd execution completed", "duration", result.Duration, "error", err)
+	r.Log.Debug("procrun: cmd execution completed", "duration", result.Duration, "error", err)
 
 	if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
 		result.Error = context.DeadlineExceeded
@@ -234,7 +234,7 @@ func (r *Runner) setupWorkDir(cmd *Command) (*Result, error) {
 		return result, nil
 	}
 
-	r.Log.Debug("creating temporary directory for cmd execution")
+	r.Log.Debug("procrun: creating temporary directory for cmd execution")
 
 	workDir, err := os.MkdirTemp("", cmd.TempDirPattern)
 	if err != nil {

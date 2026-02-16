@@ -7,10 +7,10 @@ import (
 	"os/exec"
 )
 
-func applyProcessAttributes(_ *exec.Cmd, _ *Command) error {
+func applyProcessAttributes(_ log.Logger, _ *exec.Cmd, _ *Command) error {
 	return errors.ErrUnsupported
 }
 
-func applyProcessLimits(_ int, _ *Limits) error {
+func applyProcessLimits(_ log.Logger, _ int, _ *Limits) error {
 	return errors.ErrUnsupported
 }

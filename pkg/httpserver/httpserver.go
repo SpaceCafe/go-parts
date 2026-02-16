@@ -75,7 +75,7 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 
 	go func() {
 		s.Log.Info(
-			"starting HTTP server",
+			"httpserver: starting HTTP server",
 			"host", s.cfg.Host,
 			"port", s.cfg.Port,
 			"protocols", s.Server.Protocols.String(),
@@ -100,9 +100,9 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		go func() {
 			err := <-errCh
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				s.Log.Error("failed to run HTTP server", "error", err)
+				s.Log.Error("httpserver: failed to run HTTP server", "error", err)
 			} else {
-				s.Log.Info("stopped HTTP server")
+				s.Log.Info("httpserver: stopped HTTP server")
 			}
 		}()
 
@@ -111,7 +111,7 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 }
 
 func (s *HTTPServer) Stop(ctx context.Context) error {
-	s.Log.Info("stopping HTTP server")
+	s.Log.Info("httpserver: stopping HTTP server")
 
 	return fmt.Errorf("httpserver: failed to stop HTTP server: %w", s.Server.Shutdown(ctx))
 }

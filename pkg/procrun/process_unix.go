@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/spacecafe/go-parts/pkg/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -16,17 +17,19 @@ type limitEntry struct {
 	always   bool
 }
 
-func applyProcessAttributes(execCmd *exec.Cmd, _ *Command) error {
+func applyProcessAttributes(log log.Logger, execCmd *exec.Cmd, _ *Command) error {
 	execCmd.SysProcAttr = &unix.SysProcAttr{
 		// Create a new process group for isolation.
 		Setpgid: true,
 	}
 
+	log.Debug("procrun: applying process attributes")
+
 	return nil
 }
 
 // applyProcessLimits sets resource limits for a process identified by pid using the provided Limits configuration.
-func applyProcessLimits(pid int, limits *Limits) error {
+func applyProcessLimits(log log.Logger, pid int, limits *Limits) error {
 	entries := []limitEntry{
 		{"RLIMIT_CPU", unix.RLIMIT_CPU, uint64(limits.CPU.Seconds()), false},
 		{"RLIMIT_AS", unix.RLIMIT_AS, limits.Memory.Uint64(), false},
@@ -44,6 +47,8 @@ func applyProcessLimits(pid int, limits *Limits) error {
 			}
 		}
 	}
+
+	log.Debug("procrun: applying process limits", "pid", pid, "limits", limits)
 
 	return nil
 }
