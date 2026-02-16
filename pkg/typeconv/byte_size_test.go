@@ -27,7 +27,7 @@ func TestByteSize_Bytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := tt.size.Bytes()
+			got := tt.size.Uint64()
 			assert.Equal(t, tt.want, got)
 		})
 	}

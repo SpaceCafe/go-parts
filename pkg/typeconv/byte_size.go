@@ -107,9 +107,12 @@ func ParseByteSize(input string) (ByteSize, error) {
 	return 0, fmt.Errorf("%w: cannot parse '%s' as byte size", ErrInvalidValue, input)
 }
 
-// Bytes returns the size as a plain uint64.
-func (b ByteSize) Bytes() uint64 {
-	return uint64(b)
+// Int64 returns the size as an int64. It returns math.MaxInt64 if the value overflows.
+func (b ByteSize) Int64() int64 {
+	if b > ByteSize(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	return int64(b)
 }
 
 // MarshalText implements encoding.TextMarshaler.
@@ -135,6 +138,11 @@ func (b ByteSize) String() string {
 	default:
 		return fmt.Sprintf("%dB", b)
 	}
+}
+
+// Uint64 returns the size as a plain uint64.
+func (b ByteSize) Uint64() uint64 {
+	return uint64(b)
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler, which is used by JSON and YAML decoders to

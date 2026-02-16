@@ -29,11 +29,11 @@ func applyProcessAttributes(execCmd *exec.Cmd, _ *Command) error {
 func applyProcessLimits(pid int, limits *Limits) error {
 	entries := []limitEntry{
 		{"RLIMIT_CPU", unix.RLIMIT_CPU, uint64(limits.CPU.Seconds()), false},
-		{"RLIMIT_AS", unix.RLIMIT_AS, limits.Memory.Bytes(), false},
-		{"RLIMIT_FSIZE", unix.RLIMIT_FSIZE, limits.FileSize.Bytes(), false},
+		{"RLIMIT_AS", unix.RLIMIT_AS, limits.Memory.Uint64(), false},
+		{"RLIMIT_FSIZE", unix.RLIMIT_FSIZE, limits.FileSize.Uint64(), false},
 		{"RLIMIT_NOFILE", unix.RLIMIT_NOFILE, limits.MaxOpenFiles, false},
 		{"RLIMIT_NPROC", unix.RLIMIT_NPROC, limits.MaxProcesses, false},
-		{"RLIMIT_CORE", unix.RLIMIT_CORE, limits.CoreDumpSize.Bytes(), true},
+		{"RLIMIT_CORE", unix.RLIMIT_CORE, limits.CoreDumpSize.Uint64(), true},
 	}
 
 	for _, entry := range entries {
