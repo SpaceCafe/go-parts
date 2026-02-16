@@ -66,6 +66,11 @@ type Shutdown struct {
 
 // New creates a new Shutdown instance with the provided configuration.
 func New(cfg *Config) *Shutdown {
+	if cfg == nil {
+		cfg = &Config{}
+		cfg.SetDefaults()
+	}
+
 	runtimeCtx, cancelRuntimeFn := context.WithCancel(context.Background())
 	shutdownCtx, cancelShutdownFn := context.WithCancel(context.Background())
 	obj := &Shutdown{
