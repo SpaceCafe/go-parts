@@ -9,16 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/log"
-)
-
-const (
-	// ExitCodeSigKill is the exit status code for SIGKILL, indicating the container received a SIGKILL
-	// by the underlying operating system.
-	ExitCodeSigKill = 128 + int(syscall.SIGKILL) // equals 137
 )
 
 var (
@@ -198,14 +191,10 @@ func (r *Runner) awaitResult(
 	}
 
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			result.ExitCode = exitErr.ExitCode()
-		} else {
-			result.Error = err
+		result.Error = err
+		result.ExitCode = getExitCode(err)
 
-			return result, fmt.Errorf("%w: %w", ErrProcessTermination, err)
-		}
+		return result, fmt.Errorf("%w: %w", ErrProcessTermination, err)
 	}
 
 	return result, nil
