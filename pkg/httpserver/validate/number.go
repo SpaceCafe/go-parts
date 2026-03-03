@@ -27,43 +27,51 @@ type Number interface {
 }
 
 // Between validates if a value is within the specified lower and upper bounds (inclusive).
-func Between[T Number](value, lowerBound, upperBound T) error {
-	if value < lowerBound || value > upperBound {
-		return fmt.Errorf("%w %v and %v", ErrBetween, lowerBound, upperBound)
-	}
+func Between[T Number](lowerBound, upperBound T) func(T) error {
+	return func(value T) error {
+		if value < lowerBound || value > upperBound {
+			return fmt.Errorf("%w %v and %v", ErrBetween, lowerBound, upperBound)
+		}
 
-	return nil
+		return nil
+	}
 }
 
 // Max validates if a value is less than or equal to the specified upper bound.
-func Max[T Number](value, upperBound T) error {
-	if value > upperBound {
-		return fmt.Errorf("%w %v", ErrMax, upperBound)
-	}
+func Max[T Number](upperBound T) func(T) error {
+	return func(value T) error {
+		if value > upperBound {
+			return fmt.Errorf("%w %v", ErrMax, upperBound)
+		}
 
-	return nil
+		return nil
+	}
 }
 
 // Min validates if a value is greater than or equal to the specified lower bound.
-func Min[T Number](value, lowerBound T) error {
-	if value < lowerBound {
-		return fmt.Errorf("%w %v", ErrMin, lowerBound)
-	}
+func Min[T Number](lowerBound T) func(T) error {
+	return func(value T) error {
+		if value < lowerBound {
+			return fmt.Errorf("%w %v", ErrMin, lowerBound)
+		}
 
-	return nil
+		return nil
+	}
 }
 
 // MultipleOf validates if a value is a multiple of the specified divisor.
-func MultipleOf[T Integer](value, divisor T) error {
-	if divisor == 0 {
-		return ErrDivisorZero
-	}
+func MultipleOf[T Integer](divisor T) func(T) error {
+	return func(value T) error {
+		if divisor == 0 {
+			return ErrDivisorZero
+		}
 
-	if value%divisor != 0 {
-		return fmt.Errorf("%w %v", ErrMultipleOf, divisor)
-	}
+		if value%divisor != 0 {
+			return fmt.Errorf("%w %v", ErrMultipleOf, divisor)
+		}
 
-	return nil
+		return nil
+	}
 }
 
 // Negative checks if the given numeric value is negative.
