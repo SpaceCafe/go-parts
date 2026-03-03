@@ -18,7 +18,7 @@ func SaveBodyToFile(
 	resp http.ResponseWriter,
 	req *http.Request,
 	magicBytes []byte,
-) (dir, filePath string, err error) {
+) (dir, filePath string, clean func() error, err error) {
 	magic := make([]byte, 0)
 
 	if len(magicBytes) > 0 {
@@ -28,13 +28,13 @@ func SaveBodyToFile(
 		if err != nil {
 			resp.WriteHeader(http.StatusBadRequest)
 
-			return "", "", fmt.Errorf("failed to read file header: %w", err)
+			return "", "", nil, fmt.Errorf("failed to read file header: %w", err)
 		}
 
 		if !bytes.Equal(magic, magicBytes) {
 			resp.WriteHeader(http.StatusBadRequest)
 
-			return "", "", ErrInvalidFileHeader
+			return "", "", nil, ErrInvalidFileHeader
 		}
 	}
 
@@ -42,18 +42,18 @@ func SaveBodyToFile(
 	if err != nil {
 		resp.WriteHeader(http.StatusInternalServerError)
 
-		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
+		return "", "", nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
 	filePath = filepath.Join(tempDir, "input.pdf")
 
-	file, err := os.Create(filePath)
+	file, err := os.Create(filePath) // #nosec G304
 	if err != nil {
 		resp.WriteHeader(http.StatusInternalServerError)
 
 		_ = os.RemoveAll(tempDir)
 
-		return "", "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", "", nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 
 	defer func() { _ = file.Close() }()
@@ -67,10 +67,10 @@ func SaveBodyToFile(
 
 		_ = os.RemoveAll(tempDir)
 
-		return "", "", fmt.Errorf("failed to copy request to temp file: %w", err)
+		return "", "", nil, fmt.Errorf("failed to copy request to temp file: %w", err)
 	}
 
-	return tempDir, filePath, nil
+	return tempDir, filePath, func() error { return os.RemoveAll(tempDir) }, nil
 }
 
 // GetQueryParam retrieves and converts a query parameter from an HTTP request to the specified
