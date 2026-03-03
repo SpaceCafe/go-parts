@@ -75,44 +75,44 @@ func SaveBodyToFile(
 
 // GetQueryParam retrieves and converts a query parameter from an HTTP request to the specified
 // type. If the key is empty or the form value is missing, the defaultValue is returned. The
-// validateFunc is optional and performs additional validation on the value.
+// validators are optional and perform additional validation on the value.
 //
 //nolint:ireturn // Generic function must return type parameter T.
 func GetQueryParam[T any](
 	req *http.Request,
 	key string,
 	defaultValue T,
-	validateFunc func(T) error,
+	validators ...func(T) error,
 ) (T, error) {
 	if key == "" {
 		return defaultValue, nil
 	}
 
-	return getFormValue[T](req.URL.Query().Get(key), defaultValue, validateFunc)
+	return getFormValue[T](req.URL.Query().Get(key), defaultValue, validators...)
 }
 
 // GetFormValue retrieves and converts a form value from an HTTP request to the specified type. If
-// the key is empty or the form value is missing, the defaultValue is returned. The validateFunc is
-// optional and performs additional validation on the value.
+// the key is empty or the form value is missing, the defaultValue is returned. The validators are
+// optional and perform additional validation on the value.
 //
 //nolint:ireturn // Generic function must return type parameter T.
 func GetFormValue[T any](
 	req *http.Request,
 	key string,
 	defaultValue T,
-	validateFunc func(T) error,
+	validators ...func(T) error,
 ) (T, error) {
 	if key == "" {
 		return defaultValue, nil
 	}
 
-	return getFormValue[T](req.FormValue(key), defaultValue, validateFunc)
+	return getFormValue[T](req.FormValue(key), defaultValue, validators...)
 }
 
 // getFormValue retrieves and converts a given value to the specified type T, with optional validation.
 //
 //nolint:ireturn // Generic function must return type parameter T.
-func getFormValue[T any](formValue string, defaultValue T, validateFunc func(T) error) (T, error) {
+func getFormValue[T any](formValue string, defaultValue T, validators ...func(T) error) (T, error) {
 	if formValue == "" {
 		return defaultValue, nil
 	}
@@ -122,8 +122,11 @@ func getFormValue[T any](formValue string, defaultValue T, validateFunc func(T) 
 		return defaultValue, err
 	}
 
-	if validateFunc != nil {
-		err = validateFunc(value)
+	for _, validator := range validators {
+		if validator == nil {
+			continue
+		}
+		err = validator(value)
 		if err != nil {
 			return defaultValue, err
 		}
