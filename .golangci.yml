@@ -40,6 +40,13 @@ linters:
       min-complexity: 20
     govet:
       enable-all: true
+    revive:
+      rules:
+        - name: var-naming
+          arguments:
+            - [ ]
+            - [ ]
+            - - skip-package-name-collision-with-go-std: true
     tagliatelle:
       case:
         extended-rules:

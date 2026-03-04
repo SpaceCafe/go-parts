@@ -1,12 +1,15 @@
 package validate
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
-	ErrNotEmpty      = fmt.Errorf("validate: value cannot be empty")
-	ErrLengthBetween = fmt.Errorf("validate: value's length must be between")
-	ErrLengthMax     = fmt.Errorf("validate: value's length must be less or equal than")
-	ErrLengthMin     = fmt.Errorf("validate: value's length must be greater or equal than")
+	ErrNotEmpty      = errors.New("validate: value cannot be empty")
+	ErrLengthBetween = errors.New("validate: value's length must be between")
+	ErrLengthMax     = errors.New("validate: value's length must be less or equal than")
+	ErrLengthMin     = errors.New("validate: value's length must be greater or equal than")
 )
 
 func NotEmpty(value string) error {

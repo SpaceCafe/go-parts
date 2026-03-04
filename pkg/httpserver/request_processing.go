@@ -126,6 +126,7 @@ func getFormValue[T any](formValue string, defaultValue T, validators ...func(T)
 		if validator == nil {
 			continue
 		}
+
 		err = validator(value)
 		if err != nil {
 			return defaultValue, err
