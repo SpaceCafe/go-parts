@@ -23,6 +23,9 @@ type Converter struct {
 	// SliceSeparator is the string used to split slice values. Default is ",".
 	SliceSeparator string
 
+	// MapKeyValueSeparator is the string used to separate keys from values in map entries. Default is "=".
+	MapKeyValueSeparator string
+
 	// TimeLayout is the layout used for time.Time conversion. Default is time.RFC3339.
 	TimeLayout string
 }
@@ -30,8 +33,9 @@ type Converter struct {
 // New creates a new Converter with default settings.
 func New() *Converter {
 	return &Converter{
-		SliceSeparator: ",",
-		TimeLayout:     time.RFC3339,
+		SliceSeparator:       ",",
+		MapKeyValueSeparator: "=",
+		TimeLayout:           time.RFC3339,
 	}
 }
 
@@ -129,9 +133,51 @@ func (c *Converter) setField(field reflect.Value, value string) error {
 	case reflect.Slice:
 		return c.setSlice(field, value)
 
+	case reflect.Map:
+		return c.setMap(field, value)
+
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedType, field.Kind())
 	}
+
+	return nil
+}
+
+// setMap handles map conversion by parsing "key=value" pairs separated by unquoted whitespace.
+// Double-quoted values are supported to allow spaces within values (or keys).
+func (c *Converter) setMap(field reflect.Value, value string) error {
+	if value == "" {
+		field.Set(reflect.MakeMap(field.Type()))
+
+		return nil
+	}
+
+	entries, err := parseMapEntries(value, c.MapKeyValueSeparator)
+	if err != nil {
+		return err
+	}
+
+	newMap := reflect.MakeMapWithSize(field.Type(), len(entries))
+
+	for _, entry := range entries {
+		mapKey := reflect.New(field.Type().Key()).Elem()
+
+		err = c.setField(mapKey, entry[0])
+		if err != nil {
+			return fmt.Errorf("typeconv: map key '%s': %w", entry[0], err)
+		}
+
+		mapValue := reflect.New(field.Type().Elem()).Elem()
+
+		err = c.setField(mapValue, entry[1])
+		if err != nil {
+			return fmt.Errorf("typeconv: map value '%s': %w", entry[1], err)
+		}
+
+		newMap.SetMapIndex(mapKey, mapValue)
+	}
+
+	field.Set(newMap)
 
 	return nil
 }
@@ -167,6 +213,31 @@ func (c *Converter) setSlice(field reflect.Value, value string) error {
 	field.Set(slice)
 
 	return nil
+}
+
+// parseMapEntries parses a string of key-value pairs separated by unquoted whitespace.
+// Each pair is split on the first occurrence of the kvSep separator.
+// Double-quoted segments are respected, so spaces inside quotes are preserved.
+// Returns a slice of [2]string{key, value} entries.
+func parseMapEntries(input, kvSep string) ([][2]string, error) {
+	tokens := splitUnquoted(input)
+	entries := make([][2]string, 0, len(tokens))
+
+	for _, token := range tokens {
+		key, val, found := strings.Cut(token, kvSep)
+		if !found {
+			return nil, fmt.Errorf(
+				"%w: map entry '%s' missing '%s' separator",
+				ErrInvalidValue,
+				token,
+				kvSep,
+			)
+		}
+
+		entries = append(entries, [2]string{unquote(key), unquote(val)})
+	}
+
+	return entries, nil
 }
 
 func setBool(field reflect.Value, value string) error {
@@ -250,4 +321,47 @@ func setTime(field reflect.Value, value, layout string) error {
 	field.Set(reflect.ValueOf(timeVal))
 
 	return nil
+}
+
+// splitUnquoted splits a string on unquoted whitespace.
+// Characters inside double quotes are treated as part of the current token.
+func splitUnquoted(value string) []string {
+	var (
+		tokens []string
+		token  strings.Builder
+		inQuot bool
+	)
+
+	for i := range len(value) {
+		char := value[i]
+
+		switch {
+		case char == '"':
+			inQuot = !inQuot
+
+			token.WriteByte(char)
+		case char == ' ' && !inQuot:
+			if token.Len() > 0 {
+				tokens = append(tokens, token.String())
+				token.Reset()
+			}
+		default:
+			token.WriteByte(char)
+		}
+	}
+
+	if token.Len() > 0 {
+		tokens = append(tokens, token.String())
+	}
+
+	return tokens
+}
+
+// unquote removes surrounding double quotes from a string if present.
+func unquote(value string) string {
+	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+		return value[1 : len(value)-1]
+	}
+
+	return value
 }

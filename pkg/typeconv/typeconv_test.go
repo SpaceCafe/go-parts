@@ -120,6 +120,172 @@ func TestConverter_Convert_Int(t *testing.T) {
 	}
 }
 
+func TestConverter_Convert_Map(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		target  any
+		check   func(t *testing.T, target any)
+		name    string
+		value   string
+		kvSep   string
+		wantErr bool
+	}{
+		{
+			name:   "simple string-string map",
+			value:  `key1=val1 key2=val2`,
+			kvSep:  "=",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Equal(t, map[string]string{"key1": "val1", "key2": "val2"}, *v)
+			},
+		},
+		{
+			name:   "quoted value with space",
+			value:  `key1=val1 key2="val2 with space"`,
+			kvSep:  "=",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Equal(t, map[string]string{"key1": "val1", "key2": "val2 with space"}, *v)
+			},
+		},
+		{
+			name:   "string-int map",
+			value:  `a=1 b=2 c=3`,
+			kvSep:  "=",
+			target: &map[string]int{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]int)
+				require.True(t, ok)
+				assert.Equal(t, map[string]int{"a": 1, "b": 2, "c": 3}, *v)
+			},
+		},
+		{
+			name:   "empty string produces empty map",
+			value:  "",
+			kvSep:  "=",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Empty(t, *v)
+			},
+		},
+		{
+			name:   "custom kv separator",
+			value:  `key1:val1 key2:val2`,
+			kvSep:  ":",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Equal(t, map[string]string{"key1": "val1", "key2": "val2"}, *v)
+			},
+		},
+		{
+			name:   "value containing separator uses first occurrence",
+			value:  `key1=val=ue1 key2=val2`,
+			kvSep:  "=",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Equal(t, map[string]string{"key1": "val=ue1", "key2": "val2"}, *v)
+			},
+		},
+		{
+			name:    "missing separator in entry",
+			value:   `key1=val1 badtoken`,
+			kvSep:   "=",
+			target:  &map[string]string{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid value type",
+			value:   `a=1 b=notanint`,
+			kvSep:   "=",
+			target:  &map[string]int{},
+			wantErr: true,
+		},
+		{
+			name:   "string-bool map",
+			value:  `debug=true verbose=false`,
+			kvSep:  "=",
+			target: &map[string]bool{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]bool)
+				require.True(t, ok)
+				assert.Equal(t, map[string]bool{"debug": true, "verbose": false}, *v)
+			},
+		},
+		{
+			name:   "single entry",
+			value:  `only=one`,
+			kvSep:  "=",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Equal(t, map[string]string{"only": "one"}, *v)
+			},
+		},
+		{
+			name:   "multiple spaces between entries",
+			value:  `key1=val1    key2=val2`,
+			kvSep:  "=",
+			target: &map[string]string{},
+			check: func(t *testing.T, target any) {
+				t.Helper()
+
+				v, ok := target.(*map[string]string)
+				require.True(t, ok)
+				assert.Equal(t, map[string]string{"key1": "val1", "key2": "val2"}, *v)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			target := reflect.ValueOf(tt.target).Elem()
+			c := &typeconv.Converter{
+				SliceSeparator:       ",",
+				MapKeyValueSeparator: tt.kvSep,
+				TimeLayout:           time.RFC3339,
+			}
+			err := c.Convert(target, tt.value)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				tt.check(t, tt.target)
+			}
+		})
+	}
+}
+
 func TestConverter_Convert_Uint(t *testing.T) {
 	t.Parallel()
 

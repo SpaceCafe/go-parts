@@ -113,7 +113,6 @@ func (b ByteSize) Int64() int64 {
 		return math.MaxInt64
 	}
 
-	//nolint:gosec // Overflow is guarded by the check above.
 	return int64(b)
 }
 
