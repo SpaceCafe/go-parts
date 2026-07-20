@@ -109,3 +109,12 @@ func PrintableASCII(value string) error {
 
 	return nil
 }
+
+func Strings(values []string, validator func(string) error) error {
+	errs := make([]error, len(values))
+	for i, v := range values {
+		errs[i] = validator(v)
+	}
+
+	return errors.Join(errs...)
+}
