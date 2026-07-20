@@ -131,6 +131,28 @@ func GetJSONBody(req *http.Request, v any) error {
 	return nil
 }
 
+func Validate[T any](value T, validators ...func(T) error) error {
+	errs := make([]error, len(validators))
+	for i, validator := range validators {
+		if validator == nil {
+			continue
+		}
+
+		errs[i] = validator(value)
+	}
+
+	return errors.Join(errs...)
+}
+
+func ValidateSlice[T any](values []T, validators ...func(T) error) error {
+	errs := make([]error, len(values))
+	for i, value := range values {
+		errs[i] = Validate(value, validators...)
+	}
+
+	return errors.Join(errs...)
+}
+
 // getFormValue retrieves and converts a given value to the specified type T, with optional validation.
 //
 //nolint:ireturn // Generic function must return type parameter T.
@@ -144,15 +166,9 @@ func getFormValue[T any](formValue string, defaultValue T, validators ...func(T)
 		return defaultValue, err
 	}
 
-	for _, validator := range validators {
-		if validator == nil {
-			continue
-		}
-
-		err = validator(value)
-		if err != nil {
-			return defaultValue, err
-		}
+	err = Validate(value, validators...)
+	if err != nil {
+		return defaultValue, err
 	}
 
 	return value, nil
