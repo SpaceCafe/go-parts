@@ -3,18 +3,45 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 )
 
 var (
-	ErrNotEmpty      = errors.New("validate: value cannot be empty")
-	ErrLengthBetween = errors.New("validate: value's length must be between")
-	ErrLengthMax     = errors.New("validate: value's length must be less or equal than")
-	ErrLengthMin     = errors.New("validate: value's length must be greater or equal than")
+	ErrAllowedSymbols = errors.New("validate: value must contain only allowed symbols")
+	ErrLengthBetween  = errors.New("validate: value's length must be between")
+	ErrLengthMax      = errors.New("validate: value's length must be less or equal than")
+	ErrLengthMin      = errors.New("validate: value's length must be greater or equal than")
+	ErrNotEmpty       = errors.New("validate: value cannot be empty")
+
+	filenameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+[a-zA-Z0-9\-_.]+$`)
 )
 
-func NotEmpty(value string) error {
-	if value == "" {
-		return ErrNotEmpty
+func AllowedSymbols(list []rune) func(string) error {
+	return func(value string) error {
+		for _, char := range value {
+			if !slices.Contains(list, char) {
+				return fmt.Errorf("%w %v", ErrAllowedSymbols, list)
+			}
+		}
+
+		return nil
+	}
+}
+
+func Filename(value string) error {
+	if !filenameRegex.MatchString(value) {
+		return fmt.Errorf("%w %v", ErrAllowedSymbols, filenameRegex.String())
+	}
+
+	return nil
+}
+
+func Hex(value string) error {
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'A' || char > 'F') && (char < 'a' || char > 'f') {
+			return fmt.Errorf("%w 0-9,A-F,a-f", ErrAllowedSymbols)
+		}
 	}
 
 	return nil
@@ -51,4 +78,34 @@ func LengthMin(lowerBound int) func(string) error {
 
 		return nil
 	}
+}
+
+func MatchRegex(regex string) func(string) error {
+	pattern := regexp.MustCompile(regex)
+
+	return func(value string) error {
+		if !pattern.MatchString(value) {
+			return fmt.Errorf("%w %s", ErrAllowedSymbols, regex)
+		}
+
+		return nil
+	}
+}
+
+func NotEmpty(value string) error {
+	if value == "" {
+		return ErrNotEmpty
+	}
+
+	return nil
+}
+
+func PrintableASCII(value string) error {
+	for _, char := range value {
+		if char < 32 || char > 126 {
+			return fmt.Errorf("%w char 32-126", ErrAllowedSymbols)
+		}
+	}
+
+	return nil
 }
