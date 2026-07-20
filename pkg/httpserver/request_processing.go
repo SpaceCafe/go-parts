@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -107,6 +108,27 @@ func GetFormValue[T any](
 	}
 
 	return getFormValue[T](req.FormValue(key), defaultValue, validators...)
+}
+
+// GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. If `v` implements a
+// `Validate()` error method, it is called after successful decoding and any
+// returned error is propagated to the caller.
+func GetJSONBody(req *http.Request, v any) error {
+	if err := json.NewDecoder(req.Body).Decode(v); err != nil {
+		return fmt.Errorf("failed to decode JSON body: %w", err)
+	}
+
+	type validator interface {
+		Validate() error
+	}
+
+	if val, ok := v.(validator); ok {
+		if err := val.Validate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // getFormValue retrieves and converts a given value to the specified type T, with optional validation.
