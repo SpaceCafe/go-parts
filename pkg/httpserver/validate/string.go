@@ -9,6 +9,7 @@ import (
 
 var (
 	ErrAllowedSymbols = errors.New("validate: value must contain only allowed symbols")
+	ErrLength         = errors.New("validate: value's length must be")
 	ErrLengthBetween  = errors.New("validate: value's length must be between")
 	ErrLengthMax      = errors.New("validate: value's length must be less or equal than")
 	ErrLengthMin      = errors.New("validate: value's length must be greater or equal than")
@@ -17,6 +18,7 @@ var (
 	filenameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+[a-zA-Z0-9\-_.]+$`)
 )
 
+// AllowedSymbols returns a validation function that checks if a string contains only the specified allowed symbols.
 func AllowedSymbols(list []rune) func(string) error {
 	return func(value string) error {
 		for _, char := range value {
@@ -29,6 +31,7 @@ func AllowedSymbols(list []rune) func(string) error {
 	}
 }
 
+// Filename validates the input string against a predefined regular expression for allowed filename characters.
 func Filename(value string) error {
 	if !filenameRegex.MatchString(value) {
 		return fmt.Errorf("%w %v", ErrAllowedSymbols, filenameRegex.String())
@@ -37,6 +40,7 @@ func Filename(value string) error {
 	return nil
 }
 
+// Hex checks if the given string contains only valid hexadecimal characters (0-9, A-F, a-f).
 func Hex(value string) error {
 	for _, char := range value {
 		if (char < '0' || char > '9') && (char < 'A' || char > 'F') && (char < 'a' || char > 'f') {
@@ -45,6 +49,17 @@ func Hex(value string) error {
 	}
 
 	return nil
+}
+
+// Length ensures the input string has the specified length.
+func Length(length int) func(string) error {
+	return func(value string) error {
+		if len(value) != length {
+			return fmt.Errorf("%w %v", ErrLength, length)
+		}
+
+		return nil
+	}
 }
 
 // LengthBetween validates if a string's length is between the specified bounds (inclusive).
@@ -80,6 +95,7 @@ func LengthMin(lowerBound int) func(string) error {
 	}
 }
 
+// MatchRegex validates a string against a regular expression.
 func MatchRegex(regex string) func(string) error {
 	pattern := regexp.MustCompile(regex)
 
@@ -92,6 +108,7 @@ func MatchRegex(regex string) func(string) error {
 	}
 }
 
+// NotEmpty checks if the provided string is not empty.
 func NotEmpty(value string) error {
 	if value == "" {
 		return ErrNotEmpty
@@ -100,6 +117,7 @@ func NotEmpty(value string) error {
 	return nil
 }
 
+// PrintableASCII checks if the input string contains non-printable ASCII characters (ASCII codes outside 32-126).
 func PrintableASCII(value string) error {
 	for _, char := range value {
 		if char < 32 || char > 126 {
