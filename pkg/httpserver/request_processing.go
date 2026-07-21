@@ -10,10 +10,18 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spacecafe/go-parts/pkg/httpserver/validate"
 	"github.com/spacecafe/go-parts/pkg/typeconv"
 )
 
-var ErrInvalidFileHeader = errors.New("invalid file header")
+var (
+	ErrInvalidFileHeader = errors.New("httpserver: invalid file header")
+	ErrReadFileHeader    = errors.New("httpserver: failed to read file header")
+	ErrTempDirCreation   = errors.New("httpserver: failed to create temp dir")
+	ErrTempFileCreation  = errors.New("httpserver: failed to create temp file")
+	ErrTempFileCopy      = errors.New("httpserver: failed to copy request to temp file")
+	ErrJSONBodyDecoding  = errors.New("httpserver: failed to decode JSON body")
+)
 
 func SaveBodyToFile(
 	resp http.ResponseWriter,
@@ -29,7 +37,7 @@ func SaveBodyToFile(
 		if err != nil {
 			resp.WriteHeader(http.StatusBadRequest)
 
-			return "", "", nil, fmt.Errorf("failed to read file header: %w", err)
+			return "", "", nil, fmt.Errorf("%w: %w", ErrReadFileHeader, err)
 		}
 
 		if !bytes.Equal(magic, magicBytes) {
@@ -43,7 +51,7 @@ func SaveBodyToFile(
 	if err != nil {
 		resp.WriteHeader(http.StatusInternalServerError)
 
-		return "", "", nil, fmt.Errorf("failed to create temp dir: %w", err)
+		return "", "", nil, fmt.Errorf("%w: %w", ErrTempDirCreation, err)
 	}
 
 	filePath = filepath.Join(tempDir, "input.pdf")
@@ -54,7 +62,7 @@ func SaveBodyToFile(
 
 		_ = os.RemoveAll(tempDir)
 
-		return "", "", nil, fmt.Errorf("failed to create temp file: %w", err)
+		return "", "", nil, fmt.Errorf("%w: %w", ErrTempFileCreation, err)
 	}
 
 	defer func() { _ = file.Close() }()
@@ -68,7 +76,7 @@ func SaveBodyToFile(
 
 		_ = os.RemoveAll(tempDir)
 
-		return "", "", nil, fmt.Errorf("failed to copy request to temp file: %w", err)
+		return "", "", nil, fmt.Errorf("%w: %w", ErrTempFileCopy, err)
 	}
 
 	return tempDir, filePath, func() error { return os.RemoveAll(tempDir) }, nil
@@ -89,7 +97,7 @@ func GetQueryParam[T any](
 		return defaultValue, nil
 	}
 
-	return getFormValue[T](req.URL.Query().Get(key), defaultValue, validators...)
+	return getFormValue[T](key, req.URL.Query().Get(key), defaultValue, validators...)
 }
 
 // GetFormValue retrieves and converts a form value from an HTTP request to the specified type. If
@@ -107,15 +115,15 @@ func GetFormValue[T any](
 		return defaultValue, nil
 	}
 
-	return getFormValue[T](req.FormValue(key), defaultValue, validators...)
+	return getFormValue[T](key, req.FormValue(key), defaultValue, validators...)
 }
 
 // GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. If `v` implements a
-// `Validate()` error method, it is called after successful decoding and any
+// Validate error method, it is called after successful decoding and any
 // returned error is propagated to the caller.
 func GetJSONBody(req *http.Request, v any) error {
 	if err := json.NewDecoder(req.Body).Decode(v); err != nil {
-		return fmt.Errorf("failed to decode JSON body: %w", err)
+		return fmt.Errorf("%w: %w", ErrJSONBodyDecoding, err)
 	}
 
 	type validator interface {
@@ -131,42 +139,28 @@ func GetJSONBody(req *http.Request, v any) error {
 	return nil
 }
 
-func Validate[T any](value T, validators ...func(T) error) error {
-	errs := make([]error, len(validators))
-	for i, validator := range validators {
-		if validator == nil {
-			continue
-		}
-
-		errs[i] = validator(value)
-	}
-
-	return errors.Join(errs...)
-}
-
-func ValidateSlice[T any](values []T, validators ...func(T) error) error {
-	errs := make([]error, len(values))
-	for i, value := range values {
-		errs[i] = Validate(value, validators...)
-	}
-
-	return errors.Join(errs...)
-}
-
-// getFormValue retrieves and converts a given value to the specified type T, with optional validation.
+// getFormValue retrieves and converts a given value to the specified type T, with optional
+// validation. The key names the value in any error returned.
 //
 //nolint:ireturn // Generic function must return type parameter T.
-func getFormValue[T any](formValue string, defaultValue T, validators ...func(T) error) (T, error) {
+func getFormValue[T any](
+	key string,
+	formValue string,
+	defaultValue T,
+	validators ...func(T) error,
+) (T, error) {
 	if formValue == "" {
 		return defaultValue, nil
 	}
 
 	value, err := typeconv.ConvertTo[T](formValue)
 	if err != nil {
-		return defaultValue, err
+		// Report the raw form value: the converted value is the zero value here, not the input
+		// the caller needs to see.
+		return defaultValue, &validate.ValidationError{Name: key, Value: formValue, Err: err}
 	}
 
-	err = Validate(value, validators...)
+	err = validate.Validate(key, value, validators...)
 	if err != nil {
 		return defaultValue, err
 	}
