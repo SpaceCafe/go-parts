@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spacecafe/go-parts/pkg/httpserver/validate"
 	"github.com/spacecafe/go-parts/pkg/typeconv"
@@ -137,6 +138,28 @@ func GetJSONBody(req *http.Request, v any) error {
 	}
 
 	return nil
+}
+
+// RespondWithError sends an HTTP error response with the specified status code and error message.
+func RespondWithError(resp http.ResponseWriter, code int, err error) {
+	http.Error(resp, err.Error(), code)
+}
+
+// RespondWithProblem constructs and sends a problem+json compliant error response (RFC 7807)
+// with the given status code and error details.
+func RespondWithProblem(resp http.ResponseWriter, code int, err error) {
+	h := resp.Header()
+	h.Del("Content-Length")
+	h.Set("Content-Type", "application/problem+json; charset=utf-8")
+	h.Set("X-Content-Type-Options", "nosniff")
+	resp.WriteHeader(code)
+
+	statusText := http.StatusText(code)
+	errorText, _ := json.Marshal(err.Error())
+
+	_, _ = resp.Write([]byte(`{"type": "/errors/` + typeconv.ToKebabCase(statusText) + `", "title": "` + statusText + `", "status": ` + strconv.Itoa(code) + `, "detail": "`))
+	_, _ = resp.Write(errorText)
+	_, _ = resp.Write([]byte(`"}`))
 }
 
 // getFormValue retrieves and converts a given value to the specified type T, with optional
