@@ -2,14 +2,13 @@ package httpserver
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
+	"github.com/spacecafe/go-parts/pkg/validate"
 )
 
 const (
@@ -25,21 +24,7 @@ var (
 	_ config.Defaultable = (*Config)(nil)
 	_ config.Validatable = (*Config)(nil)
 
-	ErrInvalidHost     = errors.New("httpserver: host must be a valid network address")
-	ErrInvalidBasePath = errors.New(
-		"httpserver: base path must be an absolute path without trailing slash",
-	)
-	ErrMissingCertFile = errors.New(
-		"httpserver: cert file must be specified if key file is specified",
-	)
-	ErrMissingKeyFile = errors.New(
-		"httpserver: key file must be specified if cert file is specified",
-	)
-	ErrUnreadableCertFile       = errors.New("httpserver: cert file must be readable")
-	ErrUnreadableKeyFile        = errors.New("httpserver: key file must be readable")
-	ErrInvalidReadTimeout       = errors.New("httpserver: read timeout must be positive")
-	ErrInvalidReadHeaderTimeout = errors.New("httpserver: read header timeout must be positive")
-	ErrInvalidPort              = errors.New("httpserver: port must be between 1 and 65535")
+	ErrInvalidBasePath = errors.New("validate: value must be an absolute path without trailing slash")
 )
 
 // Config defines the essential parameters for serving an http Server.
@@ -56,6 +41,9 @@ type Config struct {
 	// KeyFile represents the path to the key file.
 	KeyFile string `json:"keyFile" yaml:"keyFile"`
 
+	// IdleTimeout represents the maximum amount of time to wait for the next request when keep-alive is enabled.
+	IdleTimeout time.Duration `json:"idleTimeout" yaml:"idleTimeout"`
+
 	// ReadTimeout represents the maximum duration before timing out read of the request.
 	ReadTimeout time.Duration `json:"readTimeout" yaml:"readTimeout"`
 
@@ -64,9 +52,6 @@ type Config struct {
 
 	// WriteTimeout represents the maximum duration before timing out writes of the response.
 	WriteTimeout time.Duration `json:"writeTimeout" yaml:"writeTimeout"`
-
-	// IdleTimeout represents the maximum amount of time to wait for the next request when keep-alive is enabled.
-	IdleTimeout time.Duration `json:"idleTimeout" yaml:"idleTimeout"`
 
 	// Port specifies the port to be used for connections.
 	Port int `json:"port" yaml:"port"`
@@ -89,59 +74,30 @@ func (r *Config) SetDefaults() {
 
 // Validate ensures the all necessary configurations are filled and within valid confines.
 func (r *Config) Validate() error {
-	var err error
+	var errCertFile, errKeyFile error
 
-	if r.Host == "" {
-		return ErrInvalidHost
+	if r.CertFile != "" {
+		r.CertFile, errCertFile = filepath.Abs(r.CertFile)
 	}
 
-	if r.BasePath != "" && (!path.IsAbs(r.BasePath) || strings.HasSuffix(r.BasePath, "/")) {
-		return ErrInvalidBasePath
+	if r.KeyFile != "" {
+		r.KeyFile, errKeyFile = filepath.Abs(r.KeyFile)
 	}
 
-	if r.ReadTimeout <= 0 {
-		return ErrInvalidReadTimeout
-	}
-
-	if r.ReadHeaderTimeout <= 0 {
-		return ErrInvalidReadHeaderTimeout
-	}
-
-	if r.Port <= 0 || r.Port > 65535 {
-		return ErrInvalidPort
-	}
-
-	if r.CertFile == "" && r.KeyFile == "" {
-		return nil
-	}
-
-	if r.CertFile == "" {
-		return ErrMissingCertFile
-	}
-
-	if r.KeyFile == "" {
-		return ErrMissingKeyFile
-	}
-
-	r.CertFile, err = filepath.Abs(r.CertFile)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrMissingCertFile, err)
-	}
-
-	r.KeyFile, err = filepath.Abs(r.KeyFile)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrMissingKeyFile, err)
-	}
-
-	_, err = os.Stat(r.CertFile)
-	if err != nil {
-		return ErrUnreadableCertFile
-	}
-
-	_, err = os.Stat(r.KeyFile)
-	if err != nil {
-		return ErrUnreadableKeyFile
-	}
-
-	return nil
+	return errors.Join(
+		validate.Validate("host", r.Host, validate.NotEmpty),
+		validate.Validate("base path", r.BasePath, validate.NotEmpty, func(value string) error {
+			if !path.IsAbs(value) || strings.HasSuffix(value, "/") {
+				return ErrInvalidBasePath
+			}
+			return nil
+		}),
+		validate.Validate("idle timeout", r.IdleTimeout, validate.Positive),
+		validate.Validate("read timeout", r.ReadTimeout, validate.Positive),
+		validate.Validate("read header timeout", r.ReadHeaderTimeout, validate.Positive),
+		validate.Validate("write timeout", r.WriteTimeout, validate.Positive),
+		validate.Validate("port", r.Port, validate.Between(0, 65_535)),
+		validate.Validate("cert file", errCertFile, validate.NoError),
+		validate.Validate("key file", errKeyFile, validate.NoError),
+	)
 }

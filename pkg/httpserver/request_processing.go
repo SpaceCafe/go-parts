@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/spacecafe/go-parts/pkg/httpserver/validate"
 	"github.com/spacecafe/go-parts/pkg/typeconv"
+	validate2 "github.com/spacecafe/go-parts/pkg/validate"
 )
 
 var (
@@ -180,10 +180,10 @@ func getFormValue[T any](
 	if err != nil {
 		// Report the raw form value: the converted value is the zero value here, not the input
 		// the caller needs to see.
-		return defaultValue, &validate.ValidationError{Name: key, Value: formValue, Err: err}
+		return defaultValue, &validate2.ValidationError{Name: key, Value: formValue, Err: err}
 	}
 
-	err = validate.Validate(key, value, validators...)
+	err = validate2.Validate(key, value, validators...)
 	if err != nil {
 		return defaultValue, err
 	}
