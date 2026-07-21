@@ -6,14 +6,14 @@ import (
 )
 
 var (
-	ErrPositive    = errors.New("validate: value must be positive")
-	ErrBetween     = errors.New("validate: value must be between")
-	ErrNegative    = errors.New("validate: value must be negative")
-	ErrNonNegative = errors.New("validate: value must be non-negative")
-	ErrMax         = errors.New("validate: value must be less or equal than")
-	ErrMin         = errors.New("validate: value must be greater or equal than")
-	ErrDivisorZero = errors.New("validate: divisor cannot be zero")
-	ErrMultipleOf  = errors.New("validate: value must be multiple of")
+	ErrNotPositive    = errors.New("validate: value must be positive")
+	ErrNotBetween     = errors.New("validate: value must be between")
+	ErrNotNegative    = errors.New("validate: value must be negative")
+	ErrNotNonNegative = errors.New("validate: value must be non-negative")
+	ErrMax            = errors.New("validate: value must be less or equal than")
+	ErrMin            = errors.New("validate: value must be greater or equal than")
+	ErrDivisorZero    = errors.New("validate: divisor cannot be zero")
+	ErrNotMultipleOf  = errors.New("validate: value must be multiple of")
 )
 
 type Integer interface {
@@ -30,7 +30,7 @@ type Number interface {
 func Between[T Number](lowerBound, upperBound T) func(T) error {
 	return func(value T) error {
 		if value < lowerBound || value > upperBound {
-			return fmt.Errorf("%w %v and %v", ErrBetween, lowerBound, upperBound)
+			return fmt.Errorf("%w %v and %v", ErrNotBetween, lowerBound, upperBound)
 		}
 
 		return nil
@@ -67,7 +67,7 @@ func MultipleOf[T Integer](divisor T) func(T) error {
 		}
 
 		if value%divisor != 0 {
-			return fmt.Errorf("%w %v", ErrMultipleOf, divisor)
+			return fmt.Errorf("%w %v", ErrNotMultipleOf, divisor)
 		}
 
 		return nil
@@ -77,7 +77,7 @@ func MultipleOf[T Integer](divisor T) func(T) error {
 // Negative checks if the given numeric value is negative.
 func Negative[T Number](value T) error {
 	if value >= 0 {
-		return ErrNegative
+		return ErrNotNegative
 	}
 
 	return nil
@@ -86,7 +86,7 @@ func Negative[T Number](value T) error {
 // NonNegative validates that the provided numeric value is non-negative (including zero).
 func NonNegative[T Number](value T) error {
 	if value < 0 {
-		return ErrNonNegative
+		return ErrNotNonNegative
 	}
 
 	return nil
@@ -95,7 +95,7 @@ func NonNegative[T Number](value T) error {
 // Positive checks if the provided value is positive (excluding zero).
 func Positive[T Number](value T) error {
 	if value <= 0 {
-		return ErrPositive
+		return ErrNotPositive
 	}
 
 	return nil
