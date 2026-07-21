@@ -1,10 +1,10 @@
 package shutdown
 
 import (
-	"errors"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
+	"github.com/spacecafe/go-parts/pkg/validate"
 )
 
 const DefaultTimeout = time.Second * 3
@@ -12,8 +12,6 @@ const DefaultTimeout = time.Second * 3
 var (
 	_ config.Defaultable = (*Config)(nil)
 	_ config.Validatable = (*Config)(nil)
-
-	ErrInvalidTimeout = errors.New("shutdown: timeout must be positive")
 )
 
 type Config struct {
@@ -30,9 +28,5 @@ func (c *Config) SetDefaults() {
 }
 
 func (c *Config) Validate() error {
-	if c.Timeout <= 0 {
-		return ErrInvalidTimeout
-	}
-
-	return nil
+	return validate.Validate("timeout", c.Timeout, validate.Positive)
 }
