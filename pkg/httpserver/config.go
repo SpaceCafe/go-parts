@@ -86,8 +86,8 @@ func (r *Config) Validate() error {
 
 	return errors.Join(
 		validate.Validate("host", r.Host, validate.NotEmpty),
-		validate.Validate("base path", r.BasePath, validate.NotEmpty, func(value string) error {
-			if !path.IsAbs(value) || strings.HasSuffix(value, "/") {
+		validate.Validate("base path", r.BasePath, func(value string) error {
+			if value != "" && (!path.IsAbs(value) || strings.HasSuffix(value, "/")) {
 				return ErrInvalidBasePath
 			}
 			return nil
