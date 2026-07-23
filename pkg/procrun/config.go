@@ -5,7 +5,6 @@ import (
 
 	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/typeconv"
-	"github.com/spacecafe/go-parts/pkg/validate"
 )
 
 const (
@@ -45,8 +44,4 @@ type Config struct {
 func (c *Config) SetDefaults() {
 	c.Limits.MaxOpenFiles = DefaultMaxOpenFiles
 	c.Limits.MaxProcesses = DefaultMaxProcesses
-}
-
-func (c *Config) Validate() error {
-	return validate.Validate("cpu", c.Limits.CPU, validate.Positive)
 }
