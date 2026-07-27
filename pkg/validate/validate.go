@@ -40,8 +40,13 @@ func ValidateSlice[S ~[]E, E any](name string, values S, validators ...func(E) e
 }
 
 // ValidateMap validates all entries in a map using the provided validators and returns any combined validation errors.
-func ValidateMap[M ~map[K]V, K comparable, V any](name string, values M, validators ...func(V) error) error {
+func ValidateMap[M ~map[K]V, K comparable, V any](
+	name string,
+	values M,
+	validators ...func(V) error,
+) error {
 	errs := make([]error, len(values))
+
 	i := 0
 	for key, value := range values {
 		errs[i] = Validate(fmt.Sprintf("%s[%v]", name, key), value, validators...)

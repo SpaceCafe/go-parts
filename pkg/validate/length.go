@@ -84,7 +84,9 @@ func length[K comparable, V any, T ~string | ~[]V | ~map[K]V](targetLength int) 
 }
 
 // lengthBetween validates that the provided value has a length between the specified bounds (inclusive).
-func lengthBetween[K comparable, V any, T ~string | ~[]V | ~map[K]V](lowerBound, upperBound int) func(T) error {
+func lengthBetween[K comparable, V any, T ~string | ~[]V | ~map[K]V](
+	lowerBound, upperBound int,
+) func(T) error {
 	return func(value T) error {
 		if len(value) < lowerBound || len(value) > upperBound {
 			return fmt.Errorf("%w %v and %v", ErrLengthBetween, lowerBound, upperBound)
