@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"errors"
+	"math"
 	"path"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,9 @@ var (
 	_ config.Defaultable = (*Config)(nil)
 	_ config.Validatable = (*Config)(nil)
 
-	ErrInvalidBasePath = errors.New("validate: value must be an absolute path without trailing slash")
+	ErrInvalidBasePath = errors.New(
+		"validate: value must be an absolute path without trailing slash",
+	)
 )
 
 // Config defines the essential parameters for serving an http Server.
@@ -90,13 +93,14 @@ func (r *Config) Validate() error {
 			if value != "" && (!path.IsAbs(value) || strings.HasSuffix(value, "/")) {
 				return ErrInvalidBasePath
 			}
+
 			return nil
 		}),
 		validate.Validate("idle timeout", r.IdleTimeout, validate.Positive),
 		validate.Validate("read timeout", r.ReadTimeout, validate.Positive),
 		validate.Validate("read header timeout", r.ReadHeaderTimeout, validate.Positive),
 		validate.Validate("write timeout", r.WriteTimeout, validate.Positive),
-		validate.Validate("port", r.Port, validate.Between(0, 65_535)),
+		validate.Validate("port", r.Port, validate.Between(0, math.MaxUint16)),
 		validate.Validate("cert file", errCertFile, validate.NoError),
 		validate.Validate("key file", errKeyFile, validate.NoError),
 	)
