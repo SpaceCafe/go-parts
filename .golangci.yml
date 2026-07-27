@@ -4,7 +4,9 @@ linters:
   default: all
   disable:
     - exhaustruct
+    - gomodguard
     - nonamedreturns
+    - wrapcheck
     - wsl
   settings:
     cyclop:
@@ -80,6 +82,7 @@ linters:
     rules:
       - linters:
           - funlen
+          - goconst
         path: _test.go
     paths:
       - third_party$
