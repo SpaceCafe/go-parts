@@ -3,6 +3,7 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 // Validate runs every validator against value and joins their errors. The name identifies the
@@ -28,30 +29,31 @@ func Validate[T any](name string, value T, validators ...func(T) error) error {
 	return nil
 }
 
-// ValidateSlice runs every validator against each element of values. Errors are reported against
-// `name[i]` so the caller can tell which element was rejected.
-func ValidateSlice[S ~[]E, E any](name string, values S, validators ...func(E) error) error {
-	errs := make([]error, len(values))
-	for i, value := range values {
-		errs[i] = Validate(fmt.Sprintf("%s[%d]", name, i), value, validators...)
-	}
+// Elements validates each element of a slice using the provided validators and returns
+// any combined validation errors.
+func Elements[T any](validators ...func(T) error) func([]T) error {
+	return func(values []T) error {
+		errs := make([]error, len(values))
+		for i, value := range values {
+			errs[i] = Validate(strconv.Itoa(i), value, validators...)
+		}
 
-	return errors.Join(errs...)
+		return errors.Join(errs...)
+	}
 }
 
-// ValidateMap validates all entries in a map using the provided validators and returns any combined validation errors.
-func ValidateMap[M ~map[K]V, K comparable, V any](
-	name string,
-	values M,
-	validators ...func(V) error,
-) error {
-	errs := make([]error, len(values))
+// Entries validates each value of a map using the provided validators and returns
+// any combined validation errors.
+func Entries[K comparable, V any](validators ...func(V) error) func(map[K]V) error {
+	return func(values map[K]V) error {
+		errs := make([]error, len(values))
 
-	i := 0
-	for key, value := range values {
-		errs[i] = Validate(fmt.Sprintf("%s[%v]", name, key), value, validators...)
-		i++
+		i := 0
+		for key, value := range values {
+			errs[i] = Validate(fmt.Sprintf("%v", key), value, validators...)
+			i++
+		}
+
+		return errors.Join(errs...)
 	}
-
-	return errors.Join(errs...)
 }

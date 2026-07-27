@@ -3,6 +3,7 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"math"
 )
 
 var (
@@ -90,6 +91,11 @@ func NonNegative[T Number](value T) error {
 	}
 
 	return nil
+}
+
+// Port validates that the provided numeric value is a valid port number (between 0 and 65535).
+func Port[T Number](value T) error {
+	return Between(0, math.MaxUint16)(int(value))
 }
 
 // Positive validates that the provided numeric value is positive (excluding zero).
