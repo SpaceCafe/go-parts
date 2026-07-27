@@ -61,19 +61,17 @@ func (c *BasicAuthConfig) SetDefaults() {
 // slice signals an unconfigured struct rather than a deliberately empty one.
 func (c *BasicAuthConfig) Validate() error {
 	return errors.Join(
-		validate.Validate("principals", c.Principals, validate.NotNilMap),
-		validate.ValidateMap(
+		validate.Validate(
 			"principals",
 			c.Principals,
-			validate.NotEmpty,
-			validate.LengthMin[string](minSecretLength),
+			validate.NotNilMap,
+			validate.Entries[string, string](validate.LengthMin[string](minSecretLength)),
 		),
-		validate.Validate("tokens", c.Tokens, validate.NotNilSlice),
-		validate.ValidateSlice(
+		validate.Validate(
 			"tokens",
 			c.Tokens,
-			validate.NotEmpty,
-			validate.LengthMin[string](minSecretLength),
+			validate.NotNilSlice,
+			validate.Elements[string](validate.LengthMin[string](minSecretLength)),
 		),
 		validate.Validate("authenticator", &c.Authenticator, validate.NotNilPointer),
 	)

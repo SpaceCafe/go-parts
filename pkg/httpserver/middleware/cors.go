@@ -85,20 +85,23 @@ func (c *CORSConfig) Validate() error {
 	}
 
 	return errors.Join(
-		validate.Validate("allowed origins", c.AllowedOrigins, validate.NotEmptySlice),
-		validate.ValidateSlice("allowed origins", c.AllowedOrigins, validate.NotEmpty),
-		validate.Validate("allowed methods", c.AllowedMethods, validate.NotEmptySlice),
-		validate.ValidateSlice(
+		validate.Validate(
+			"allowed origins",
+			c.AllowedOrigins,
+			validate.NotNilSlice,
+			validate.Elements[string](validate.NotEmpty),
+		),
+		validate.Validate(
 			"allowed methods",
 			c.AllowedMethods,
-			validate.NotEmpty,
-			validate.AllowedValues(httpMethods),
+			validate.NotNilSlice,
+			validate.Elements[string](validate.AllowedValues(httpMethods)),
 		),
-		validate.ValidateSlice(
+		validate.Validate(
 			"allowed headers",
 			c.AllowedHeaders,
-			validate.NotEmpty,
-			validate.PrintableASCII,
+			validate.NotNilSlice,
+			validate.Elements[string](validate.NotEmpty, validate.PrintableASCII),
 		),
 		validate.Validate("max age", c.MaxAge, validate.NonNegative),
 	)
