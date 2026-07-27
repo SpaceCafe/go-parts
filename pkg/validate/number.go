@@ -26,7 +26,7 @@ type Number interface {
 	Integer | ~float32 | ~float64
 }
 
-// Between validates if a value is within the specified lower and upper bounds (inclusive).
+// Between validates that the provided value is within the specified lower and upper bounds (inclusive).
 func Between[T Number](lowerBound, upperBound T) func(T) error {
 	return func(value T) error {
 		if value < lowerBound || value > upperBound {
@@ -37,7 +37,7 @@ func Between[T Number](lowerBound, upperBound T) func(T) error {
 	}
 }
 
-// Max validates if a value is less than or equal to the specified upper bound.
+// Max validates that the provided value is less than or equal to the specified upper bound.
 func Max[T Number](upperBound T) func(T) error {
 	return func(value T) error {
 		if value > upperBound {
@@ -48,7 +48,7 @@ func Max[T Number](upperBound T) func(T) error {
 	}
 }
 
-// Min validates if a value is greater than or equal to the specified lower bound.
+// Min validates that the provided value is greater than or equal to the specified lower bound.
 func Min[T Number](lowerBound T) func(T) error {
 	return func(value T) error {
 		if value < lowerBound {
@@ -59,7 +59,7 @@ func Min[T Number](lowerBound T) func(T) error {
 	}
 }
 
-// MultipleOf validates if a value is a multiple of the specified divisor.
+// MultipleOf validates that the provided value is a multiple of the specified divisor.
 func MultipleOf[T Integer](divisor T) func(T) error {
 	return func(value T) error {
 		if divisor == 0 {
@@ -74,7 +74,7 @@ func MultipleOf[T Integer](divisor T) func(T) error {
 	}
 }
 
-// Negative checks if the given numeric value is negative.
+// Negative validates that the provided numeric value is negative.
 func Negative[T Number](value T) error {
 	if value >= 0 {
 		return ErrNotNegative
@@ -92,7 +92,7 @@ func NonNegative[T Number](value T) error {
 	return nil
 }
 
-// Positive checks if the provided value is positive (excluding zero).
+// Positive validates that the provided numeric value is positive (excluding zero).
 func Positive[T Number](value T) error {
 	if value <= 0 {
 		return ErrNotPositive

@@ -19,16 +19,9 @@ type Redacted interface {
 
 // ValidationError reports which named value failed validation and why.
 type ValidationError struct {
-	// Name identifies the rejected value, such as a query parameter or a struct field.
-	// ValidateSlice appends the element index as `name[i]`.
-	Name string
-
-	// Value is the input that was rejected, formatted lazily by Error.
 	Value any
-
-	// Err is the underlying cause: a sentinel from the validate package, or several of them
-	// joined together when more than one validator failed.
-	Err error
+	Err   error
+	Name  string
 }
 
 func (r *ValidationError) Error() string {

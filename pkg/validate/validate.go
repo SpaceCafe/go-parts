@@ -20,7 +20,8 @@ func Validate[T any](name string, value T, validators ...func(T) error) error {
 
 	// Wrapping the joined error once, rather than each validator's error, keeps the name and
 	// value from repeating on every line when several validators fail on the same input.
-	if err := errors.Join(errs...); err != nil {
+	err := errors.Join(errs...)
+	if err != nil {
 		return &ValidationError{Name: name, Value: value, Err: err}
 	}
 
@@ -29,10 +30,22 @@ func Validate[T any](name string, value T, validators ...func(T) error) error {
 
 // ValidateSlice runs every validator against each element of values. Errors are reported against
 // `name[i]` so the caller can tell which element was rejected.
-func ValidateSlice[T any](name string, values []T, validators ...func(T) error) error {
+func ValidateSlice[S ~[]E, E any](name string, values S, validators ...func(E) error) error {
 	errs := make([]error, len(values))
 	for i, value := range values {
 		errs[i] = Validate(fmt.Sprintf("%s[%d]", name, i), value, validators...)
+	}
+
+	return errors.Join(errs...)
+}
+
+// ValidateMap validates all entries in a map using the provided validators and returns any combined validation errors.
+func ValidateMap[M ~map[K]V, K comparable, V any](name string, values M, validators ...func(V) error) error {
+	errs := make([]error, len(values))
+	i := 0
+	for key, value := range values {
+		errs[i] = Validate(fmt.Sprintf("%s[%v]", name, key), value, validators...)
+		i++
 	}
 
 	return errors.Join(errs...)
