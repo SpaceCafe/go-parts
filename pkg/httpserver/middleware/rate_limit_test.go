@@ -139,7 +139,7 @@ func TestRateLimit(t *testing.T) {
 					go func(idx int) {
 						defer waitGroup.Done()
 
-						req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+						req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", http.NoBody)
 						rec := httptest.NewRecorder()
 						handler.ServeHTTP(rec, req)
 						statusCodes[idx] = rec.Code
@@ -152,7 +152,7 @@ func TestRateLimit(t *testing.T) {
 				statusCodes := make([]int, 0, tt.requestCount)
 
 				for range tt.requestCount {
-					req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+					req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", http.NoBody)
 					rec := httptest.NewRecorder()
 					handler.ServeHTTP(rec, req)
 					statusCodes = append(statusCodes, rec.Code)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/httpserver"
+	"github.com/spacecafe/go-parts/pkg/validate"
 )
 
 const (
@@ -60,6 +61,8 @@ type RateLimitConfig struct {
 	LeakInterval time.Duration `json:"leakInterval" yaml:"leakInterval"`
 }
 
+// SetDefaults applies the default limits, yielding a sustained rate of DefaultLeakRate requests per
+// DefaultLeakInterval on top of the burst and concurrency caps.
 func (c *RateLimitConfig) SetDefaults() {
 	c.ConcurrentRequestLimit = DefaultConcurrentRequestLimit
 	c.RequestTimeout = DefaultRequestTimeout
@@ -68,31 +71,23 @@ func (c *RateLimitConfig) SetDefaults() {
 	c.LeakInterval = DefaultLeakInterval
 }
 
+// Validate ensures every limit is within range. The concurrent request limit may be zero to disable
+// the concurrency cap, while the remaining values must be positive to keep the bucket leaking.
 func (c *RateLimitConfig) Validate() error {
-	if c.ConcurrentRequestLimit < 0 {
-		return ErrInvalidConcurrentRequestLimit
-	}
-
-	if c.RequestTimeout <= 0 {
-		return ErrInvalidRequestTimeout
-	}
-
-	if c.BucketCapacity <= 0 {
-		return ErrInvalidBucketCapacity
-	}
-
-	if c.LeakRate <= 0 {
-		return ErrInvalidLeakRate
-	}
-
-	if c.LeakInterval <= 0 {
-		return ErrInvalidLeakInterval
-	}
-
-	return nil
+	return errors.Join(
+		validate.Validate(
+			"concurrent request limit",
+			c.ConcurrentRequestLimit,
+			validate.NonNegative,
+		),
+		validate.Validate("request timeout", c.RequestTimeout, validate.Positive),
+		validate.Validate("bucket capacity", c.BucketCapacity, validate.Positive),
+		validate.Validate("leak rate", c.LeakRate, validate.Positive),
+		validate.Validate("leak interval", c.LeakInterval, validate.Positive),
+	)
 }
 
-// RateLimit returns a middleware for rate limiting incoming requests based on the provided configuration.
+// RateLimit returns middleware for rate-limiting incoming requests based on the provided configuration.
 // It uses a leaky bucket algorithm for burst control and concurrent slot limiting for simultaneous requests.
 func RateLimit(ctx context.Context, cfg *RateLimitConfig) httpserver.Middleware {
 	bucket := NewLeakyBucket(cfg.BucketCapacity)
@@ -111,20 +106,12 @@ func RateLimit(ctx context.Context, cfg *RateLimitConfig) httpserver.Middleware 
 					return
 				}
 
-				http.Error(
-					resp,
-					http.StatusText(http.StatusRequestTimeout),
-					http.StatusRequestTimeout,
-				)
+				httpserver.Abort(resp, req, http.StatusRequestTimeout, nil)
 
 				return
 			}
 
-			http.Error(
-				resp,
-				http.StatusText(http.StatusTooManyRequests),
-				http.StatusTooManyRequests,
-			)
+			httpserver.Abort(resp, req, http.StatusTooManyRequests, nil)
 		})
 	}
 }
@@ -132,6 +119,8 @@ func RateLimit(ctx context.Context, cfg *RateLimitConfig) httpserver.Middleware 
 // LeakyBucket is a limited-capacity channel that implements a leaky bucket algorithm for rate-limiting operations.
 type LeakyBucket chan struct{}
 
+// NewLeakyBucket returns a bucket with the given capacity. A non-positive capacity yields a nil
+// bucket, which the methods treat as unlimited so the limit can be disabled without special cases.
 func NewLeakyBucket(capacity int) LeakyBucket {
 	if capacity <= 0 {
 		return nil
