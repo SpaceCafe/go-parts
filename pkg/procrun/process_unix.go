@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"syscall"
 
-	"github.com/spacecafe/go-parts/pkg/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -20,57 +20,23 @@ const (
 	ExitCodeSigKill = ExitCodeBase + int(syscall.SIGKILL) // equals 137
 )
 
-type limitEntry struct {
-	name     string
-	resource int
-	value    uint64
-	always   bool
+func applyArguments(r *Runner) error {
+	r.args = landlockArgs(r.cfg)
+	r.args = append(r.args, landlockNetArgs(r.cfg)...)
+	r.args = append(r.args, prlimitArgs(r.cfg)...)
+
+	r.Log.Debug("procrun: created args to restrict processes", "args", r.args)
+
+	return nil
 }
 
-func applyProcessAttributes(logger log.Logger, execCmd *exec.Cmd, _ *Command) error {
-	execCmd.SysProcAttr = &unix.SysProcAttr{
+func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
+	cmd.SysProcAttr = &unix.SysProcAttr{
 		// Create a new process group for isolation.
 		Setpgid: true,
 	}
 
-	logger.Debug("procrun: applying process attributes")
-
-	return nil
-}
-
-// applyProcessLimits sets resource limits for a process identified by pid using the provided Limits configuration.
-func applyProcessLimits(logger log.Logger, pid int, limits *Limits) error {
-	entries := []limitEntry{
-		{"RLIMIT_CPU", unix.RLIMIT_CPU, uint64(limits.CPU.Seconds()), false},
-		{"RLIMIT_AS", unix.RLIMIT_AS, limits.Memory.Uint64(), false},
-		{"RLIMIT_FSIZE", unix.RLIMIT_FSIZE, limits.FileSize.Uint64(), false},
-		{"RLIMIT_NOFILE", unix.RLIMIT_NOFILE, limits.MaxOpenFiles, false},
-		{"RLIMIT_NPROC", unix.RLIMIT_NPROC, limits.MaxProcesses, false},
-		{"RLIMIT_CORE", unix.RLIMIT_CORE, limits.CoreDumpSize.Uint64(), true},
-	}
-
-	for _, entry := range entries {
-		if entry.value > 0 || entry.always {
-			err := setLimit(pid, entry.resource, entry.value, entry.name)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	logger.Debug("procrun: applying process limits", "pid", pid, "limits", limits)
-
-	return nil
-}
-
-// setLimit sets a resource limit for a given process by PID and resource type with a specified value and name.
-func setLimit(pid, resource int, value uint64, name string) error {
-	rlimit := &unix.Rlimit{Cur: value, Max: value}
-
-	err := unix.Prlimit(pid, resource, rlimit, nil)
-	if err != nil {
-		return fmt.Errorf("%w: %s: %w", ErrResourceLimit, name, err)
-	}
+	runner.Log.Debug("procrun: applying process attributes")
 
 	return nil
 }
@@ -92,4 +58,88 @@ func getExitCode(err error) int {
 	}
 
 	return 1
+}
+
+func landlockArgs(cfg *Config) []string {
+	//nolint:mnd // Max number of arguments
+	args := make(
+		[]string,
+		0,
+		len(
+			cfg.Restrictions.RODirs,
+		)+len(
+			cfg.Restrictions.RWDirs,
+		)+len(
+			cfg.Restrictions.ROFiles,
+		)+len(
+			cfg.Restrictions.RWFiles,
+		)+6,
+	)
+
+	args = append(args, cfg.Landlock, "-ro")
+	args = append(args, cfg.Restrictions.RODirs...)
+	args = append(args, "-rw")
+	args = append(args, cfg.Restrictions.RWDirs...)
+	args = append(args, "-rofiles")
+	args = append(args, cfg.Restrictions.ROFiles...)
+	args = append(args, "-rwfiles")
+	args = append(args, cfg.Restrictions.RWFiles...)
+	args = append(args, "--")
+
+	return args
+}
+
+func landlockNetArgs(cfg *Config) []string {
+	var args []string
+
+	if cfg.Restrictions.RestrictBindTCP || cfg.Restrictions.RestrictConnectTCP {
+		args = append(args, cfg.LandlockNet)
+
+		if cfg.Restrictions.RestrictBindTCP {
+			for _, port := range cfg.Restrictions.BindTCP {
+				args = append(args, "-tcp.bind", strconv.Itoa(port))
+			}
+		}
+
+		if cfg.Restrictions.RestrictConnectTCP {
+			for _, port := range cfg.Restrictions.ConnectTCP {
+				args = append(args, "-tcp.connect", strconv.Itoa(port))
+			}
+		}
+
+		args = append(args, "--")
+	}
+
+	return args
+}
+
+// prlimitArgs generates the argument set for prlimit.
+func prlimitArgs(cfg *Config) []string {
+	//nolint:mnd // Max number of arguments
+	args := make([]string, 0, 8)
+
+	args = append(args, cfg.Prlimit, fmt.Sprintf("--core=%d", cfg.Limits.CoreDumpSize.Uint64()))
+	if cfg.Limits.CPU > 0 {
+		args = append(args, fmt.Sprintf("--cpu=%.0f", cfg.Limits.CPU.Seconds()))
+	}
+
+	if cfg.Limits.Memory > 0 {
+		args = append(args, fmt.Sprintf("--as=%d", cfg.Limits.Memory.Uint64()))
+	}
+
+	if cfg.Limits.FileSize > 0 {
+		args = append(args, fmt.Sprintf("--fsize=%d", cfg.Limits.FileSize.Uint64()))
+	}
+
+	if cfg.Limits.MaxOpenFiles > 0 {
+		args = append(args, fmt.Sprintf("--nofile=%d", cfg.Limits.MaxOpenFiles))
+	}
+
+	if cfg.Limits.MaxProcesses > 0 {
+		args = append(args, fmt.Sprintf("--nproc=%d", cfg.Limits.MaxProcesses))
+	}
+
+	args = append(args, "--")
+
+	return args
 }

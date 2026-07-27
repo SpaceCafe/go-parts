@@ -13,11 +13,10 @@ const (
 	ExitCodeSigKill = 0xC0000005
 )
 
-func applyProcessAttributes(_ log.Logger, _ *exec.Cmd, _ *Command) error {
+func applyArguments(_ *Runner) error {
 	return errors.ErrUnsupported
 }
-
-func applyProcessLimits(_ log.Logger, _ int, _ *Limits) error {
+func applyProcessAttributes(_ *Runner, _ *exec.Cmd) error {
 	return errors.ErrUnsupported
 }
 

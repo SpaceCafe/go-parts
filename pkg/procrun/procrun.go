@@ -9,16 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/log"
 )
 
 var (
-	ErrInvalidCommandPath = errors.New("procrun: cmd path cannot be empty")
+	ErrInvalidCommandPath = errors.New("procrun: command path cannot be empty")
 	ErrWorkDirCreation    = errors.New("procrun: failed to create working directory")
 	ErrProcessStart       = errors.New("procrun: failed to start process")
-	ErrResourceLimit      = errors.New("procrun: could not set resource limit")
 	ErrCleanup            = errors.New("procrun: failed to cleanup")
 	ErrProcessTermination = errors.New("procrun: process terminated unexpectedly")
 )
@@ -52,6 +52,8 @@ type Runner struct {
 
 	// cfg holds configuration settings.
 	cfg *Config
+
+	args []string
 }
 
 func New(cfg *Config, opts ...Option) *Runner {
@@ -62,6 +64,11 @@ func New(cfg *Config, opts ...Option) *Runner {
 
 	for _, opt := range opts {
 		opt(obj)
+	}
+
+	err := applyArguments(obj)
+	if err != nil {
+		obj.Log.Error("failed to apply arguments", "error", err)
 	}
 
 	return obj
@@ -76,7 +83,7 @@ func (r *Runner) Cleanup(result *Result) error {
 	if result.IsTempDir {
 		err := os.RemoveAll(result.WorkDir)
 		if err != nil {
-			return fmt.Errorf("%w: %w", ErrCleanup, err)
+			return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
 		}
 
 		return nil
@@ -85,7 +92,7 @@ func (r *Runner) Cleanup(result *Result) error {
 	// Remove all content in the directory and preserve the directory.
 	entries, err := os.ReadDir(result.WorkDir)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrCleanup, err)
+		return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
 	}
 
 	for _, entry := range entries {
@@ -93,7 +100,7 @@ func (r *Runner) Cleanup(result *Result) error {
 
 		err = os.RemoveAll(path)
 		if err != nil {
-			return fmt.Errorf("%w: %w", ErrCleanup, err)
+			return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
 		}
 	}
 
@@ -102,12 +109,7 @@ func (r *Runner) Cleanup(result *Result) error {
 
 // Run executes the cmd with configured resource limits.
 func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
-	return r.RunWithLimits(ctx, cmd, &r.cfg.Limits)
-}
-
-// RunWithLimits executes the cmd with specific resource limits.
-func (r *Runner) RunWithLimits(ctx context.Context, cmd *Command, limits *Limits) (*Result, error) {
-	r.Log.Debug("procrun: executing cmd", "cmd", cmd, "limits", limits)
+	r.Log.Debug("procrun: executing cmd", "cmd", cmd)
 
 	if cmd.Path == "" {
 		return nil, ErrInvalidCommandPath
@@ -132,26 +134,18 @@ func (r *Runner) RunWithLimits(ctx context.Context, cmd *Command, limits *Limits
 		defer cancel()
 	}
 
-	execCmd := r.buildExecCmd(cmdCtx, cmd, result.WorkDir)
+	execCmd := r.createExecCommand(cmdCtx, cmd, result.WorkDir)
 
-	err = applyProcessAttributes(r.Log, execCmd, cmd)
+	err = applyProcessAttributes(r, execCmd)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrProcessStart, err)
+		return nil, fmt.Errorf("%w: %s", ErrProcessStart, err.Error())
 	}
 
 	err = execCmd.Start()
 	if err != nil {
 		result.Error = err
 
-		return result, fmt.Errorf("%w: %w", ErrProcessStart, err)
-	}
-
-	err = applyProcessLimits(r.Log, execCmd.Process.Pid, limits)
-	if err != nil {
-		_ = execCmd.Process.Kill()
-		result.Error = fmt.Errorf("%w: %w", ErrResourceLimit, err)
-
-		return result, result.Error
+		return result, fmt.Errorf("%w: %s", ErrProcessStart, err.Error())
 	}
 
 	return r.awaitResult(cmdCtx, execCmd, result)
@@ -187,23 +181,26 @@ func (r *Runner) awaitResult(
 		result.Error = context.DeadlineExceeded
 		result.ExitCode = ExitCodeSigKill
 
-		return result, fmt.Errorf("%w: %w", ErrProcessTermination, result.Error)
+		return result, fmt.Errorf("%w: %s", ErrProcessTermination, result.Error.Error())
 	}
 
 	if err != nil {
 		result.Error = err
 		result.ExitCode = getExitCode(err)
 
-		return result, fmt.Errorf("%w: %w", ErrProcessTermination, err)
+		return result, fmt.Errorf("%w: %s", ErrProcessTermination, err.Error())
 	}
 
 	return result, nil
 }
 
-// buildExecCmd creates the *exec.Cmd with all I/O and env wired up.
-func (r *Runner) buildExecCmd(ctx context.Context, cmd *Command, workDir string) *exec.Cmd {
+// createExecCommand creates the *exec.Cmd with all I/O and env wired up.
+func (r *Runner) createExecCommand(ctx context.Context, cmd *Command, workDir string) *exec.Cmd {
+	args := append(slices.Clone(r.args), cmd.Path)
+	args = append(args, cmd.Args...)
+
 	//nolint:gosec // G204: cmd.Path and cmd.Args are intentionally dynamic, this package is a process runner by design.
-	execCmd := exec.CommandContext(ctx, cmd.Path, cmd.Args...)
+	execCmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	execCmd.Dir = workDir
 	execCmd.Env = cmd.Env
 	execCmd.Stdin = cmd.Stdin
@@ -227,7 +224,7 @@ func (r *Runner) setupWorkDir(cmd *Command) (*Result, error) {
 
 	workDir, err := os.MkdirTemp("", cmd.TempDirPattern)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrWorkDirCreation, err)
+		return nil, fmt.Errorf("%w: %s", ErrWorkDirCreation, err.Error())
 	}
 
 	result.WorkDir = workDir

@@ -61,65 +61,16 @@ func TestRunner_Run(t *testing.T) {
 		},
 	}
 
-	runner := procrun.New(&procrun.Config{})
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	require.NoError(t, cfg.Validate())
+	runner := procrun.New(cfg)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			res, err := runner.Run(context.Background(), tt.cmd)
-			tt.expect(t, res, err)
-		})
-	}
-}
-
-func TestRunner_RunWithLimits(t *testing.T) {
-	t.Parallel()
-
-	limits := &procrun.Limits{
-		Memory:       102400000,
-		MaxOpenFiles: 10,
-	}
-
-	tests := []struct {
-		cmd    *procrun.Command
-		expect func(*testing.T, *procrun.Result, error)
-		name   string
-	}{
-		{
-			name: "success with limits",
-			cmd: &procrun.Command{
-				Path: "echo",
-				Args: []string{"limits"},
-			},
-			expect: func(t *testing.T, res *procrun.Result, err error) {
-				t.Helper()
-
-				require.NoError(t, err)
-				assert.Equal(t, 0, res.ExitCode)
-			},
-		},
-		{
-			name: "failed cmd under limits",
-			cmd: &procrun.Command{
-				Path: "invalid-cmd",
-			},
-			expect: func(t *testing.T, _ *procrun.Result, err error) {
-				t.Helper()
-
-				require.Error(t, err)
-			},
-		},
-	}
-
-	runner := procrun.New(&procrun.Config{})
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			res, err := runner.RunWithLimits(context.Background(), tt.cmd, limits)
-			t.Log(err)
 			tt.expect(t, res, err)
 		})
 	}
@@ -190,7 +141,10 @@ func TestCommand_StdinStdoutStderr(t *testing.T) {
 		Stderr: &stderr,
 	}
 
-	runner := procrun.New(&procrun.Config{})
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	require.NoError(t, cfg.Validate())
+	runner := procrun.New(cfg)
 	result, err := runner.Run(context.Background(), cmd)
 	require.NoError(t, err)
 	require.NotNil(t, result)
