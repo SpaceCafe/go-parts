@@ -65,8 +65,6 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 
 // Load loads configuration from multiple sources and validates the result.
 // This is simpler than using a Loader struct for this straightforward operation.
-//
-//nolint:wrapcheck // Errors are already wrapped in sources.
 func Load(target Validatable, sources ...Source) error {
 	err := validatePointerToStruct(target)
 	if err != nil {
@@ -87,7 +85,7 @@ func Load(target Validatable, sources ...Source) error {
 
 	err = target.Validate()
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrValidation, err)
+		return fmt.Errorf("%w: %s", ErrValidation, err.Error())
 	}
 
 	return nil
@@ -172,7 +170,7 @@ func validatePointerToStruct(target any) error {
 	}
 
 	valueOf := reflect.ValueOf(target)
-	if valueOf.Kind() != reflect.Ptr {
+	if valueOf.Kind() != reflect.Pointer {
 		return fmt.Errorf(
 			"%w: target must be a pointer, got %T",
 			ErrInvalidTarget,

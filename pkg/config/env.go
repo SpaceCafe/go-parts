@@ -82,7 +82,7 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 
 		// Handle pointers to structs
 		//nolint:nestif // Required for optional nested struct initialization and loading.
-		if field.Kind() == reflect.Ptr && field.Type().Elem().Kind() == reflect.Struct {
+		if field.Kind() == reflect.Pointer && field.Type().Elem().Kind() == reflect.Struct {
 			// Initialize nil pointer if environment variable exists
 			if s.hasEnvWithPrefix(envName) {
 				if field.IsNil() {
