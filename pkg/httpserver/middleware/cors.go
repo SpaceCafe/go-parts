@@ -9,6 +9,7 @@ import (
 
 	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/httpserver"
+	"github.com/spacecafe/go-parts/pkg/validate"
 )
 
 var (
@@ -48,6 +49,8 @@ type CORSConfig struct {
 	AllowCredentials bool `json:"allowCredentials" yaml:"allowCredentials"`
 }
 
+// SetDefaults applies a permissive but safe baseline, allowing any origin with the common safe
+// methods and headers, no credentials, and no preflight caching.
 func (c *CORSConfig) SetDefaults() {
 	c.AllowedOrigins = []string{"*"}
 	c.AllowedMethods = []string{
@@ -66,20 +69,39 @@ func (c *CORSConfig) SetDefaults() {
 	c.AllowCredentials = false
 }
 
+// Validate ensures origins and methods are present and that every configured method is a real HTTP
+// method and every header is printable ASCII, rejecting values that would produce malformed headers.
 func (c *CORSConfig) Validate() error {
-	if len(c.AllowedOrigins) == 0 {
-		return ErrMissingAllowedOrigins
+	httpMethods := []string{
+		http.MethodGet,
+		http.MethodHead,
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+		http.MethodConnect,
+		http.MethodOptions,
+		http.MethodTrace,
 	}
 
-	if len(c.AllowedMethods) == 0 {
-		return ErrMissingAllowedMethods
-	}
-
-	if c.MaxAge < 0 {
-		return ErrInvalidMaxAge
-	}
-
-	return nil
+	return errors.Join(
+		validate.Validate("allowed origins", c.AllowedOrigins, validate.NotEmptySlice),
+		validate.ValidateSlice("allowed origins", c.AllowedOrigins, validate.NotEmpty),
+		validate.Validate("allowed methods", c.AllowedMethods, validate.NotEmptySlice),
+		validate.ValidateSlice(
+			"allowed methods",
+			c.AllowedMethods,
+			validate.NotEmpty,
+			validate.AllowedValues(httpMethods),
+		),
+		validate.ValidateSlice(
+			"allowed headers",
+			c.AllowedHeaders,
+			validate.NotEmpty,
+			validate.PrintableASCII,
+		),
+		validate.Validate("max age", c.MaxAge, validate.NonNegative),
+	)
 }
 
 // CORS returns a middleware that enables Cross-Origin Resource Sharing (CORS).
@@ -119,10 +141,14 @@ func CORS(cfg *CORSConfig) httpserver.Middleware {
 	}
 }
 
+// containsWildcard reports whether origins contains the "*" wildcard that allows any origin.
 func containsWildcard(origins []string) bool {
 	return slices.Contains(origins, "*")
 }
 
+// getAllowedOrigin resolves the value for the Access-Control-Allow-Origin header. It returns "*"
+// when all origins are allowed, the request origin when it is explicitly listed, and an empty string
+// otherwise so no header is emitted for a disallowed origin.
 func getAllowedOrigin(origin string, allowedOrigins []string, allowAll bool) string {
 	if allowAll {
 		return "*"
@@ -139,6 +165,8 @@ func getAllowedOrigin(origin string, allowedOrigins []string, allowAll bool) str
 	return ""
 }
 
+// setCORSHeaders writes the response headers common to simple and preflight requests. It is a no-op
+// for a disallowed (empty) origin so cross-origin responses are not exposed.
 func setCORSHeaders(
 	resp http.ResponseWriter,
 	allowOrigin string,
@@ -160,6 +188,8 @@ func setCORSHeaders(
 	}
 }
 
+// handlePreflightRequest answers an OPTIONS preflight, adding the allowed methods, headers, and
+// cache duration for an allowed origin, and always responds with "204 No Content".
 func handlePreflightRequest(
 	resp http.ResponseWriter,
 	allowOrigin, allowMethods, allowHeaders, maxAge string,

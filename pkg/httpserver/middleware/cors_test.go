@@ -127,7 +127,12 @@ func TestCORS(t *testing.T) {
 				}),
 			)
 
-			req := httptest.NewRequest(tt.requestMethod, "http://localhost", http.NoBody)
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				tt.requestMethod,
+				"http://localhost",
+				http.NoBody,
+			)
 			if tt.requestOrigin != "" {
 				req.Header.Set("Origin", tt.requestOrigin)
 			}
