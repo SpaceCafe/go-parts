@@ -103,7 +103,7 @@ func TestBasicAuth(t *testing.T) {
 				}),
 			)
 
-			req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
 			if tt.basicAuth {
 				req.SetBasicAuth(tt.username, tt.password)
 			}

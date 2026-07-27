@@ -8,19 +8,19 @@ import (
 
 	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/httpserver"
+	"github.com/spacecafe/go-parts/pkg/validate"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// authTokenPrefix is the Authorization header scheme used for token authentication, kept distinct
+// from the standard Basic scheme.
 const authTokenPrefix = "Token "
 
 var (
 	_ config.Defaultable = (*BasicAuthConfig)(nil)
 	_ config.Validatable = (*BasicAuthConfig)(nil)
 
-	ErrInvalidPrincipals    = errors.New("basic-auth: principals cannot be nil")
-	ErrInvalidTokens        = errors.New("basic-auth: tokens cannot be nil")
-	ErrInvalidAuthenticator = errors.New("basic-auth: authenticator cannot be nil")
-	ErrMismatchPassword     = errors.New("basic-auth: password mismatch")
+	ErrMismatchPassword = errors.New("basic-auth: password mismatch")
 
 	//nolint:gochecknoglobals // Maintain a set of predefined bcrypt prefixes that are used throughout the application.
 	BcryptHashPrefixes = []string{"$2a$", "$2b$", "$2x$", "$2y$"}
@@ -44,6 +44,8 @@ type BasicAuthConfig struct {
 	UseTokens bool
 }
 
+// SetDefaults initializes empty principal and token collections and installs the built-in
+// authenticator that checks credentials against them.
 func (c *BasicAuthConfig) SetDefaults() {
 	c.Principals = map[string]string{}
 	c.Tokens = []string{}
@@ -51,22 +53,21 @@ func (c *BasicAuthConfig) SetDefaults() {
 	c.UseTokens = false
 }
 
+// Validate ensures the credential collections and authenticator are non-nil, since a nil map or
+// slice signals an unconfigured struct rather than a deliberately empty one.
 func (c *BasicAuthConfig) Validate() error {
-	if c.Principals == nil {
-		return ErrInvalidPrincipals
-	}
-
-	if c.Tokens == nil {
-		return ErrInvalidTokens
-	}
-
-	if c.Authenticator == nil {
-		return ErrInvalidAuthenticator
-	}
-
-	return nil
+	return errors.Join(
+		validate.Validate("principals", c.Principals, validate.NotNilMap),
+		validate.ValidateMap("principals", c.Principals, validate.NotEmpty, validate.LengthMin[string](6)),
+		validate.Validate("tokens", c.Tokens, validate.NotNilSlice),
+		validate.ValidateSlice("tokens", c.Tokens, validate.NotEmpty, validate.LengthMin[string](6)),
+		validate.Validate("authenticator", &c.Authenticator, validate.NotNilPointer),
+	)
 }
 
+// BasicAuth returns middleware that authenticates each request. When token auth is enabled, a valid
+// bearer token in the Authorization header is accepted first, otherwise HTTP Basic credentials are
+// checked. Unauthenticated requests are aborted with a 401 and the appropriate challenge.
 func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
@@ -88,11 +89,14 @@ func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 				return
 			}
 
-			abortBasicAuth(resp, cfg.UseTokens)
+			abortBasicAuth(resp, req, cfg.UseTokens)
 		})
 	}
 }
 
+// configAuthenticator builds the default Authenticator over BasicAuthConfig. In token mode it accepts any
+// password matching a configured token and ignores the username, otherwise it looks the username up
+// among the principals and compares its password.
 func configAuthenticator(cfg *BasicAuthConfig) Authenticator {
 	return func(username, password string) bool {
 		if cfg.UseTokens {
@@ -131,14 +135,16 @@ func ValidatePasswords(expected, actual string) bool {
 	return validator(expectedBytes, actualBytes) == nil
 }
 
-func abortBasicAuth(resp http.ResponseWriter, useTokens bool) {
+// abortBasicAuth writes the WWW-Authenticate challenge matching the configured scheme and aborts
+// the request with a 401.
+func abortBasicAuth(resp http.ResponseWriter, req *http.Request, useTokens bool) {
 	if useTokens {
 		resp.Header().Set("WWW-Authenticate", `Token`)
 	} else {
 		resp.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 	}
 
-	http.Error(resp, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+	httpserver.Abort(resp, req, http.StatusUnauthorized, nil)
 }
 
 // constantTimeCompare compares two passwords for equality.
