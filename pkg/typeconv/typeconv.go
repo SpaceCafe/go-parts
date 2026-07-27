@@ -46,7 +46,6 @@ var Default = New()
 
 // Convert converts a string value to the type of the target reflect.Value.
 // The target must be a settable (e.g., from reflect.ValueOf(&x).Elem()).
-
 func (c *Converter) Convert(target reflect.Value, value string) error {
 	if !target.CanSet() {
 		return fmt.Errorf("%w: target value is not settable", ErrUnsupportedType)
@@ -123,7 +122,7 @@ func (c *Converter) setField(field reflect.Value, value string) error {
 	case reflect.Bool:
 		return setBool(field, value)
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if field.IsNil() {
 			field.Set(reflect.New(field.Type().Elem()))
 		}
@@ -199,7 +198,7 @@ func (c *Converter) setSlice(field reflect.Value, value string) error {
 		elem := slice.Index(i)
 
 		// For pointer element types, create a new instance.
-		if elem.Kind() == reflect.Ptr {
+		if elem.Kind() == reflect.Pointer {
 			elem.Set(reflect.New(elem.Type().Elem()))
 			elem = elem.Elem()
 		}
@@ -240,6 +239,8 @@ func parseMapEntries(input, kvSep string) ([][2]string, error) {
 	return entries, nil
 }
 
+// setBool parses common textual truth values into field, accepting more spellings than
+// strconv.ParseBool so config sources can use "yes"/"no" and "on"/"off".
 func setBool(field reflect.Value, value string) error {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
@@ -256,6 +257,7 @@ func setBool(field reflect.Value, value string) error {
 	return fmt.Errorf("%w: cannot parse '%s' as bool", ErrInvalidValue, value)
 }
 
+// setFloat parses value at the field's bit width and rejects results that would overflow it.
 func setFloat(field reflect.Value, value string) error {
 	floatVal, err := strconv.ParseFloat(value, field.Type().Bits())
 	if err != nil {
@@ -271,6 +273,8 @@ func setFloat(field reflect.Value, value string) error {
 	return nil
 }
 
+// setInt parses value as a 64-bit integer and uses OverflowInt to reject values that do not fit the
+// field's narrower width, since strconv cannot know the target's actual size.
 func setInt(field reflect.Value, value string) error {
 	intVal, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
@@ -286,6 +290,8 @@ func setInt(field reflect.Value, value string) error {
 	return nil
 }
 
+// setUint parses value as a 64-bit unsigned integer and rejects results that overflow the field's
+// width.
 func setUint(field reflect.Value, value string) error {
 	uintVal, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
@@ -301,6 +307,8 @@ func setUint(field reflect.Value, value string) error {
 	return nil
 }
 
+// setDuration parses value with time.ParseDuration and stores the resulting nanosecond count, which
+// is why it is handled ahead of the generic integer case.
 func setDuration(field reflect.Value, value string) error {
 	durationVal, err := time.ParseDuration(value)
 	if err != nil {
@@ -312,6 +320,7 @@ func setDuration(field reflect.Value, value string) error {
 	return nil
 }
 
+// setTime parses value using layout and stores the resulting time.Time.
 func setTime(field reflect.Value, value, layout string) error {
 	timeVal, err := time.Parse(layout, value)
 	if err != nil {
