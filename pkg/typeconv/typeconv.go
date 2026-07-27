@@ -85,6 +85,14 @@ func MustConvertTo[T any](value string) T {
 
 // setField sets the field value from the string.
 func (c *Converter) setField(field reflect.Value, value string) error {
+	if field.Type() == reflect.TypeFor[time.Duration]() {
+		return setDuration(field, value)
+	}
+
+	if field.Type() == reflect.TypeFor[time.Time]() {
+		return setTime(field, value, c.TimeLayout)
+	}
+
 	// Check if the type implements encoding.TextUnmarshaler
 	if field.CanAddr() {
 		if unmarshaler, ok := field.Addr().Interface().(encoding.TextUnmarshaler); ok {
@@ -95,14 +103,6 @@ func (c *Converter) setField(field reflect.Value, value string) error {
 
 			return nil
 		}
-	}
-
-	if field.Type() == reflect.TypeFor[time.Duration]() {
-		return setDuration(field, value)
-	}
-
-	if field.Type() == reflect.TypeFor[time.Time]() {
-		return setTime(field, value, c.TimeLayout)
 	}
 
 	//nolint:exhaustive // Only handling supported reflect.Kind types; unsupported types handled by default case.
