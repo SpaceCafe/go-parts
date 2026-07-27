@@ -12,9 +12,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// authTokenPrefix is the Authorization header scheme used for token authentication, kept distinct
-// from the standard Basic scheme.
-const authTokenPrefix = "Token "
+const (
+	// authTokenPrefix is the Authorization header scheme used for token authentication, kept distinct
+	// from the standard Basic scheme.
+	authTokenPrefix = "Token "
+
+	minSecretLength = 6
+)
 
 var (
 	_ config.Defaultable = (*BasicAuthConfig)(nil)
@@ -58,9 +62,19 @@ func (c *BasicAuthConfig) SetDefaults() {
 func (c *BasicAuthConfig) Validate() error {
 	return errors.Join(
 		validate.Validate("principals", c.Principals, validate.NotNilMap),
-		validate.ValidateMap("principals", c.Principals, validate.NotEmpty, validate.LengthMin[string](6)),
+		validate.ValidateMap(
+			"principals",
+			c.Principals,
+			validate.NotEmpty,
+			validate.LengthMin[string](minSecretLength),
+		),
 		validate.Validate("tokens", c.Tokens, validate.NotNilSlice),
-		validate.ValidateSlice("tokens", c.Tokens, validate.NotEmpty, validate.LengthMin[string](6)),
+		validate.ValidateSlice(
+			"tokens",
+			c.Tokens,
+			validate.NotEmpty,
+			validate.LengthMin[string](minSecretLength),
+		),
 		validate.Validate("authenticator", &c.Authenticator, validate.NotNilPointer),
 	)
 }
