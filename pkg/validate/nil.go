@@ -3,14 +3,14 @@ package validate
 import "errors"
 
 var (
-	ErrNil    = errors.New("validate: value must be nil")
-	ErrNotNil = errors.New("validate: value must not be nil")
+	ErrNil    = errors.New("validate: value must not be nil")
+	ErrNotNil = errors.New("validate: value must be nil")
 )
 
 // NilMap validates that the provided map is nil.
 func NilMap[K comparable, V any](value map[K]V) error {
-	if value == nil {
-		return ErrNil
+	if value != nil {
+		return ErrNotNil
 	}
 
 	return nil
@@ -19,7 +19,7 @@ func NilMap[K comparable, V any](value map[K]V) error {
 // NilPointer validates that the provided pointer is nil.
 func NilPointer[T any](value *T) error {
 	if value != nil {
-		return ErrNil
+		return ErrNotNil
 	}
 
 	return nil
@@ -27,8 +27,8 @@ func NilPointer[T any](value *T) error {
 
 // NilSlice validates that the provided slice is nil.
 func NilSlice[V any](value []V) error {
-	if value == nil {
-		return ErrNil
+	if value != nil {
+		return ErrNotNil
 	}
 
 	return nil
@@ -37,7 +37,7 @@ func NilSlice[V any](value []V) error {
 // NotNilMap validates that the provided map is not nil.
 func NotNilMap[K comparable, V any](value map[K]V) error {
 	if value == nil {
-		return ErrNotNil
+		return ErrNil
 	}
 
 	return nil
@@ -46,7 +46,7 @@ func NotNilMap[K comparable, V any](value map[K]V) error {
 // NotNilPointer validates that the provided pointer is not nil.
 func NotNilPointer[T any](value *T) error {
 	if value == nil {
-		return ErrNotNil
+		return ErrNil
 	}
 
 	return nil
@@ -55,7 +55,7 @@ func NotNilPointer[T any](value *T) error {
 // NotNilSlice validates that the provided slice is not nil.
 func NotNilSlice[V any](value []V) error {
 	if value == nil {
-		return ErrNotNil
+		return ErrNil
 	}
 
 	return nil

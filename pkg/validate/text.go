@@ -11,7 +11,7 @@ var (
 	ErrAllowedSymbols = errors.New("validate: value must contain only allowed symbols")
 	ErrAllowedValues  = errors.New("validate: value must be one of allowed values")
 
-	filenameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+[a-zA-Z0-9\-_.]+$`)
+	filenameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_.]+$`)
 )
 
 // AllowedSymbols returns a validation function that checks if a string contains only the specified allowed symbols.
