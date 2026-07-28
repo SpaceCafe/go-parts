@@ -60,7 +60,8 @@ func DirPermMax[T ~string](perm fs.FileMode) func(T) error {
 // DirRO validates that the provided path is an existing directory the current process can list and
 // traverse. It asserts the presence of read access, not the absence of write access.
 func DirRO[T ~string](value T) error {
-	if _, err := statDir(value); err != nil {
+	_, err := statDir(value)
+	if err != nil {
 		return err
 	}
 
@@ -112,7 +113,8 @@ func FilePermMax[T ~string](perm fs.FileMode) func(T) error {
 // FileRO validates that the provided path is an existing regular file the current process can read.
 // It asserts the presence of read access, not the absence of write access.
 func FileRO[T ~string](value T) error {
-	if _, err := statFile(value); err != nil {
+	_, err := statFile(value)
+	if err != nil {
 		return err
 	}
 
