@@ -67,29 +67,13 @@ func (f *File) Move(dir, filename string) error {
 }
 
 func (f *File) UnmarshalJSON(data []byte) error {
-	// Seek whitespace characters and check if the next char is a quote.
-	start := 0
-	for start < len(data) && (data[start] == ' ' || data[start] == '\t' || data[start] == '\n' || data[start] == '\r') {
-		start++
+	data, f.Err = extractJSONValue(data)
+	if f.Err != nil {
+		return f.Err
 	}
 
-	// Check if the first non-whitespace character is a quote.
-	if start < len(data) && data[start] == '"' {
-		start++
-		// Find the closing quote.
-		end := start
-		for end < len(data) && data[end] != '"' {
-			end++
-		}
-
-		data = data[start:end]
-
-		f.reader = base64.NewDecoder(base64.StdEncoding, bytes.NewReader(data))
-		f.create(nil)
-	} else {
-		f.Code = http.StatusBadRequest
-		f.Err = ErrWriteFile
-	}
+	f.reader = bytes.NewReader(data)
+	f.create(nil)
 
 	return f.Err
 }
@@ -172,6 +156,31 @@ func (f *File) write() error {
 	}
 
 	return nil
+}
+
+type Base64File struct {
+	File
+}
+
+func (f *Base64File) UnmarshalJSON(data []byte) error {
+	data, f.Err = extractJSONValue(data)
+	if f.Err != nil {
+		return f.Err
+	}
+
+	f.reader = base64.NewDecoder(base64.StdEncoding, bytes.NewReader(data))
+	f.create(nil)
+
+	return f.Err
+}
+
+func extractJSONValue(data []byte) ([]byte, error) {
+	// Check if the first non-whitespace character is a quote.
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		return data[1 : len(data)-1], nil
+	}
+
+	return nil, ErrWriteFile
 }
 
 // noopCleanup is used as File.Cleanup when there is nothing to remove.

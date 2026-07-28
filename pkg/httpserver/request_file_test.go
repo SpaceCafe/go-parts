@@ -95,6 +95,46 @@ func TestFile_UnmarshalJSON(t *testing.T) {
 		data        string
 		wantContent string
 	}{
+		{name: "string value", data: "\t \n \r \"payload\"", wantContent: `payload`},
+		{name: "empty value", data: `""`, wantContent: ``},
+		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrWriteFile},
+		{name: "null value", data: `null`, wantErr: httpserver.ErrWriteFile},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var payload struct {
+				File httpserver.File `json:"file"`
+			}
+
+			err := json.Unmarshal([]byte(`{"file":`+tt.data+`}`), &payload)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, payload.File)
+
+			t.Cleanup(func() { _ = payload.File.Cleanup() })
+			require.NoError(t, payload.File.Err)
+			assertContent(t, payload.File.Path, tt.wantContent)
+		})
+	}
+}
+
+func TestBase64File_UnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		wantErr     error
+		name        string
+		data        string
+		wantContent string
+	}{
 		{name: "base64 value", data: `"cGF5bG9hZA=="`, wantContent: `payload`},
 		{name: "invalid base64 value", data: `"cGF5bG9hZA="`, wantErr: httpserver.ErrWriteFile},
 		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrWriteFile},
@@ -106,7 +146,7 @@ func TestFile_UnmarshalJSON(t *testing.T) {
 			t.Parallel()
 
 			var payload struct {
-				File httpserver.File `json:"file"`
+				File httpserver.Base64File `json:"file"`
 			}
 
 			err := json.Unmarshal([]byte(`{"file":`+tt.data+`}`), &payload)
