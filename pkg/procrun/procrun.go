@@ -71,6 +71,8 @@ func New(cfg *Config, opts ...Option) *Runner {
 		obj.Log.Error("failed to apply arguments", "error", err)
 	}
 
+	checkCapabilities(obj)
+
 	return obj
 }
 

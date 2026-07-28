@@ -20,6 +20,7 @@ const (
 	ExitCodeSigKill = ExitCodeBase + int(syscall.SIGKILL) // equals 137
 )
 
+// applyArguments configures a Runner's arguments based on its configuration.
 func applyArguments(r *Runner) error {
 	r.args = landlockArgs(r.cfg)
 	r.args = append(r.args, landlockNetArgs(r.cfg)...)
@@ -30,6 +31,7 @@ func applyArguments(r *Runner) error {
 	return nil
 }
 
+// applyProcessAttributes applies the required process attributes to the given command.
 func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &unix.SysProcAttr{
 		// Create a new process group for isolation.
@@ -41,6 +43,26 @@ func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 	return nil
 }
 
+// checkCapabilities checks and logs if the required binaries are available.
+func checkCapabilities(runner *Runner) {
+	if runner.cfg.Landlock == "" {
+		runner.Log.Warn("procrun: landlock-restrict binary not found." +
+			"Process's filesystem restrictions will not be applied! Please check or ignore if intended.")
+	}
+
+	if runner.cfg.LandlockNet == "" {
+		runner.Log.Warn("procrun: landlock-restrict-net binary not found." +
+			"Process's network restrictions will not be applied! Please check or ignore if intended.")
+	}
+
+	if runner.cfg.Prlimit == "" {
+		runner.Log.Warn("procrun: prlimit binary not found." +
+			"Process's resource limits will not be applied! Please check or ignore if intended.")
+	}
+}
+
+// getExitCode extracts and returns the appropriate exit code from the provided error,
+// with special handling for signals.
 func getExitCode(err error) int {
 	if err == nil {
 		return 0
@@ -60,6 +82,7 @@ func getExitCode(err error) int {
 	return 1
 }
 
+// landlockArgs constructs a list of command-line arguments based on the filesystem restrictions defined in the Config.
 func landlockArgs(cfg *Config) []string {
 	//nolint:mnd // Max number of arguments
 	args := make(
@@ -89,6 +112,7 @@ func landlockArgs(cfg *Config) []string {
 	return args
 }
 
+// landlockNetArgs constructs a list of command-line arguments based on the network restrictions defined in the Config.
 func landlockNetArgs(cfg *Config) []string {
 	var args []string
 
@@ -113,7 +137,7 @@ func landlockNetArgs(cfg *Config) []string {
 	return args
 }
 
-// prlimitArgs generates the argument set for prlimit.
+// prlimitArgs constructs a list of command-line arguments based on the process resource limits defined in the Config.
 func prlimitArgs(cfg *Config) []string {
 	//nolint:mnd // Max number of arguments
 	args := make([]string, 0, 8)

@@ -110,21 +110,9 @@ func (c *Config) SetDefaults() {
 
 func (c *Config) Validate() error {
 	return errors.Join(
-		validate.Validate("landlock", c.Landlock, func(value string) (err error) {
-			c.Landlock, err = exec.LookPath(value)
-
-			return
-		}),
-		validate.Validate("landlock net", c.LandlockNet, func(value string) (err error) {
-			c.LandlockNet, err = exec.LookPath(value)
-
-			return
-		}),
-		validate.Validate("prlimit", c.Prlimit, func(value string) (err error) {
-			c.Prlimit, err = exec.LookPath(value)
-
-			return
-		}),
+		validate.Validate("landlock", c.Landlock, lookPath(&c.Landlock)),
+		validate.Validate("landlock net", c.LandlockNet, lookPath(&c.LandlockNet)),
+		validate.Validate("prlimit", c.Prlimit, lookPath(&c.Prlimit)),
 		validate.Validate(
 			"bind tcp restrictions",
 			c.Restrictions.BindTCP,
@@ -162,4 +150,18 @@ func (c *Config) Validate() error {
 			validate.Elements[string](validate.NotEmpty),
 		),
 	)
+}
+
+// lookPath returns a validation function that resolves value to an absolute
+// executable path via exec.LookPath and stores the result in *target.
+func lookPath(target *string) func(value string) error {
+	return func(value string) (err error) {
+		if value == "" {
+			return nil
+		}
+
+		*target, err = exec.LookPath(value)
+
+		return
+	}
 }

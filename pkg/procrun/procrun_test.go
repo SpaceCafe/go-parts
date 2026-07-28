@@ -106,7 +106,10 @@ func TestRunner_Cleanup(t *testing.T) {
 		},
 	}
 
-	runner := procrun.New(&procrun.Config{})
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	require.NoError(t, cfg.Validate())
+	runner := procrun.New(cfg)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -145,6 +148,7 @@ func TestCommand_StdinStdoutStderr(t *testing.T) {
 	cfg.SetDefaults()
 	require.NoError(t, cfg.Validate())
 	runner := procrun.New(cfg)
+
 	result, err := runner.Run(context.Background(), cmd)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -162,7 +166,11 @@ func TestCommand_Timeout(t *testing.T) {
 		Timeout: time.Second,
 	}
 
-	runner := procrun.New(&procrun.Config{})
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	require.NoError(t, cfg.Validate())
+	runner := procrun.New(cfg)
+
 	result, err := runner.Run(context.Background(), cmd)
 	require.Error(t, err)
 	require.NotNil(t, result)
