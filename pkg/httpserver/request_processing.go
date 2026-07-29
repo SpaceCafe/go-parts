@@ -21,16 +21,17 @@ var (
 //
 //nolint:ireturn // Generic function must return type parameter T.
 func GetFormValue[T any](
+	target *T,
 	req *http.Request,
 	key string,
 	defaultValue T,
 	validators ...func(T) error,
-) (T, error) {
+) error {
 	if key == "" {
-		return defaultValue, nil
+		return ErrNoKey
 	}
 
-	return getFormValue[T](key, req.FormValue(key), defaultValue, validators...)
+	return getFormValue[T](target, key, req.FormValue(key), defaultValue, validators...)
 }
 
 // GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. If `v` implements a
@@ -63,15 +64,16 @@ func GetJSONBody(req *http.Request, target any) error {
 //nolint:ireturn // Generic function must return type parameter T.
 func GetPathValue[T any](
 	req *http.Request,
+	target *T,
 	key string,
 	defaultValue T,
 	validators ...func(T) error,
-) (T, error) {
+) error {
 	if key == "" {
-		return defaultValue, ErrNoKey
+		return ErrNoKey
 	}
 
-	return getFormValue[T](key, req.PathValue(key), defaultValue, validators...)
+	return getFormValue[T](target, key, req.PathValue(key), defaultValue, validators...)
 }
 
 // GetQueryParam retrieves and converts a query parameter from an HTTP request to the specified
@@ -81,15 +83,16 @@ func GetPathValue[T any](
 //nolint:ireturn // Generic function must return type parameter T.
 func GetQueryParam[T any](
 	req *http.Request,
+	target *T,
 	key string,
 	defaultValue T,
 	validators ...func(T) error,
-) (T, error) {
+) error {
 	if key == "" {
-		return defaultValue, ErrNoKey
+		return ErrNoKey
 	}
 
-	return getFormValue[T](key, req.URL.Query().Get(key), defaultValue, validators...)
+	return getFormValue[T](target, key, req.URL.Query().Get(key), defaultValue, validators...)
 }
 
 // getFormValue retrieves and converts a given value to the specified type T, with optional
@@ -97,26 +100,30 @@ func GetQueryParam[T any](
 //
 //nolint:ireturn // Generic function must return type parameter T.
 func getFormValue[T any](
+	target *T,
 	key string,
 	formValue string,
 	defaultValue T,
 	validators ...func(T) error,
-) (T, error) {
+) error {
+	*target = defaultValue
 	if formValue == "" {
-		return defaultValue, nil
+		return nil
 	}
 
 	value, err := typeconv.ConvertTo[T](formValue)
 	if err != nil {
 		// Report the raw form value: the converted value is the zero value here, not the input
 		// the caller needs to see.
-		return defaultValue, &validate.ValidationError{Name: key, Value: formValue, Err: err}
+		return &validate.ValidationError{Name: key, Value: formValue, Err: err}
 	}
 
 	err = validate.Validate(key, value, validators...)
 	if err != nil {
-		return defaultValue, err
+		return err
 	}
 
-	return value, nil
+	*target = value
+
+	return nil
 }
