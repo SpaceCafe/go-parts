@@ -33,6 +33,11 @@ type Source interface {
 	Load(target any) error
 }
 
+type pointerDefaultable[T any] interface {
+	*T
+	Defaultable
+}
+
 func AutoLoad(target Validatable, name, envPrefix string) error {
 	var (
 		sources []Source
@@ -89,6 +94,13 @@ func Load(target Validatable, sources ...Source) error {
 	}
 
 	return nil
+}
+
+func New[T any, PT pointerDefaultable[T]]() *T {
+	config := PT(new(T))
+	config.SetDefaults()
+
+	return config
 }
 
 // configPaths generates a list of potential configuration file paths for the given application name.

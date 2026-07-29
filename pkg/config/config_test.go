@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,12 +71,38 @@ func testFileSourceLoad(
 	}
 }
 
+var errInvalidPort = errors.New("port must not be zero")
+
 type MockConfig struct {
 	Name string `json:"name" yaml:"name"`
 	Port int    `json:"port" yaml:"port"`
 }
 
+func (c *MockConfig) SetDefaults() {
+	c.Name = "default-app"
+	c.Port = 8080
+}
+
 func (c *MockConfig) Validate() error {
+	if c.Port == 0 {
+		return errInvalidPort
+	}
+
+	return nil
+}
+
+// EmptyConfig sets no defaults at all, so New must hand back the plain zero value.
+type EmptyConfig struct {
+	Port int `json:"port" yaml:"port"`
+}
+
+func (c *EmptyConfig) SetDefaults() {}
+
+func (c *EmptyConfig) Validate() error {
+	if c.Port == 0 {
+		return errInvalidPort
+	}
+
 	return nil
 }
 
@@ -94,4 +121,45 @@ func TestLoad(t *testing.T) {
 	err = config.AutoLoad(target, "test-app", "APP")
 	require.NoError(t, err)
 	assert.EqualExportedValues(t, &MockConfig{Name: "test-app", Port: 9090}, target)
+}
+
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	// New is generic over the config type, so each case wraps its own instantiation.
+	tests := []struct {
+		want    any
+		newFunc func() any
+		name    string
+	}{
+		{
+			name: "defaults are applied",
+			newFunc: func() any {
+				return config.New[MockConfig]()
+			},
+			want: &MockConfig{Name: "default-app", Port: 8080},
+		},
+		{
+			name: "empty defaults leave the zero value untouched",
+			newFunc: func() any {
+				return config.New[EmptyConfig]()
+			},
+			want: &EmptyConfig{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.newFunc()
+
+			assert.NotNil(t, got)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	// Each call must hand out a fresh instance, otherwise callers would share state.
+	first := config.New[MockConfig]()
+	second := config.New[MockConfig]()
+	assert.NotSame(t, first, second)
 }
