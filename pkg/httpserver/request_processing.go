@@ -21,8 +21,8 @@ var (
 //
 //nolint:ireturn // Generic function must return type parameter T.
 func GetFormValue[T any](
-	target *T,
 	req *http.Request,
+	target *T,
 	key string,
 	defaultValue T,
 	validators ...func(T) error,
