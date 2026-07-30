@@ -18,8 +18,6 @@ var (
 // GetFormValue retrieves and converts a form value from an HTTP request to the specified type. If
 // the form value is missing, the defaultValue is returned. The validators are optional and perform
 // additional validation on the value.
-//
-//nolint:ireturn // Generic function must return type parameter T.
 func GetFormValue[T any](
 	req *http.Request,
 	target *T,
@@ -60,8 +58,6 @@ func GetJSONBody(req *http.Request, target any) error {
 // GetPathValue retrieves and converts a path value from an HTTP request to the specified
 // type. If the path value is missing, the defaultValue is returned. The validators are optional
 // and perform additional validation on the value.
-//
-//nolint:ireturn // Generic function must return type parameter T.
 func GetPathValue[T any](
 	req *http.Request,
 	target *T,
@@ -79,8 +75,6 @@ func GetPathValue[T any](
 // GetQueryParam retrieves and converts a query parameter from an HTTP request to the specified
 // type. If the query parameter is missing, the defaultValue is returned. The validators are optional
 // and perform additional validation on the value.
-//
-//nolint:ireturn // Generic function must return type parameter T.
 func GetQueryParam[T any](
 	req *http.Request,
 	target *T,
@@ -97,8 +91,6 @@ func GetQueryParam[T any](
 
 // getFormValue retrieves and converts a given value to the specified type T, with optional
 // validation. The key names the value in any error returned.
-//
-//nolint:ireturn // Generic function must return type parameter T.
 func getFormValue[T any](
 	target *T,
 	key string,
@@ -107,6 +99,7 @@ func getFormValue[T any](
 	validators ...func(T) error,
 ) error {
 	*target = defaultValue
+
 	if formValue == "" {
 		return nil
 	}

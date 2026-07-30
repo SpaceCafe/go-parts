@@ -24,29 +24,57 @@ func TestFile_Move(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		targetDir func(*testing.T) string
-		wantErr   error
-		name      string
-		filename  string
+		targetDir      func(t *testing.T, sourceDir string) string
+		wantErr        error
+		name           string
+		filename       string
+		wantSourceGone bool
 	}{
 		{
 			name: "existing directory",
-			targetDir: func(t *testing.T) string {
+			targetDir: func(t *testing.T, _ string) string {
 				t.Helper()
 
 				return t.TempDir()
 			},
-			filename: "output.bin",
+			filename:       "output.bin",
+			wantSourceGone: true,
 		},
 		{
 			name: "missing directory",
-			targetDir: func(t *testing.T) string {
+			targetDir: func(t *testing.T, _ string) string {
 				t.Helper()
 
 				return filepath.Join(t.TempDir(), "missing")
 			},
 			filename: "output.bin",
 			wantErr:  httpserver.ErrTargetDir,
+		},
+		{
+			name: "empty target directory renames in place",
+			targetDir: func(*testing.T, string) string {
+				return ""
+			},
+			filename: "renamed.bin",
+		},
+		{
+			name: "target directory equal to source",
+			targetDir: func(_ *testing.T, sourceDir string) string {
+				return sourceDir
+			},
+			filename: "renamed.bin",
+		},
+		{
+			name: "target subdirectory of source",
+			targetDir: func(t *testing.T, sourceDir string) string {
+				t.Helper()
+
+				subDir := filepath.Join(sourceDir, "sub")
+				require.NoError(t, os.Mkdir(subDir, 0o750))
+
+				return subDir
+			},
+			filename: "output.bin",
 		},
 	}
 
@@ -60,7 +88,12 @@ func TestFile_Move(t *testing.T) {
 			t.Cleanup(func() { _ = file.Cleanup() })
 
 			sourceDir := file.Dir
-			targetDir := tt.targetDir(t)
+			targetDir := tt.targetDir(t, sourceDir)
+
+			wantDir := targetDir
+			if wantDir == "" {
+				wantDir = sourceDir
+			}
 
 			err := file.Move(targetDir, tt.filename)
 			if tt.wantErr != nil {
@@ -74,14 +107,15 @@ func TestFile_Move(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, targetDir, file.Dir)
-			assert.Equal(t, filepath.Join(targetDir, tt.filename), file.Path)
+			assert.Equal(t, wantDir, file.Dir)
+			assert.Equal(t, filepath.Join(wantDir, tt.filename), file.Path)
 			assertContent(t, file.Path, "payload")
 
-			// Move takes over ownership, so the temporary directory is gone and Cleanup is a no-op.
-			assert.NoDirExists(t, sourceDir)
-			require.NoError(t, file.Cleanup())
-			assert.FileExists(t, file.Path)
+			if tt.wantSourceGone {
+				assert.NoDirExists(t, sourceDir)
+			} else {
+				assert.DirExists(t, sourceDir)
+			}
 		})
 	}
 }

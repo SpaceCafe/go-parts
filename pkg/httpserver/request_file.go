@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -45,10 +46,15 @@ func GetFileFromBody(req *http.Request, magicBytes []byte) *File {
 }
 
 // Move moves the file into the given directory under the filename and returns the resulting path.
-func (f *File) Move(dir, filename string) error {
-	dir, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
+// If the target directory is empty, the file is renamed.
+func (f *File) Move(dir, filename string) (err error) {
+	if dir == "" {
+		dir = f.Dir
+	} else {
+		dir, err = filepath.Abs(dir)
+		if err != nil {
+			return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
+		}
 	}
 
 	targetPath := filepath.Join(dir, filename)
@@ -58,8 +64,12 @@ func (f *File) Move(dir, filename string) error {
 		return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
 	}
 
-	_ = f.Cleanup()
-	f.Cleanup = noopCleanup
+	// Don't clean up if new dir is equal to or a subdirectory of old dir.
+	if !strings.HasPrefix(dir+string(filepath.Separator), f.Dir+string(filepath.Separator)) &&
+		f.Dir != dir {
+		_ = f.Cleanup()
+	}
+
 	f.Dir = dir
 	f.Path = targetPath
 
