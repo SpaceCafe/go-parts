@@ -45,17 +45,17 @@ func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 
 // checkCapabilities checks and logs if the required binaries are available.
 func checkCapabilities(runner *Runner) {
-	if runner.cfg.Landlock == "" {
+	if runner.cfg.LandlockBin == "" {
 		runner.Log.Warn("procrun: landlock-restrict binary not found." +
 			"Process's filesystem restrictions will not be applied! Please check or ignore if intended.")
 	}
 
-	if runner.cfg.LandlockNet == "" {
+	if runner.cfg.LandlockNetBin == "" {
 		runner.Log.Warn("procrun: landlock-restrict-net binary not found." +
 			"Process's network restrictions will not be applied! Please check or ignore if intended.")
 	}
 
-	if runner.cfg.Prlimit == "" {
+	if runner.cfg.PrlimitBin == "" {
 		runner.Log.Warn("procrun: prlimit binary not found." +
 			"Process's resource limits will not be applied! Please check or ignore if intended.")
 	}
@@ -99,7 +99,7 @@ func landlockArgs(cfg *Config) []string {
 		)+6,
 	)
 
-	args = append(args, cfg.Landlock, "-ro")
+	args = append(args, cfg.LandlockBin, "-ro")
 	args = append(args, cfg.Restrictions.RODirs...)
 	args = append(args, "-rw")
 	args = append(args, cfg.Restrictions.RWDirs...)
@@ -117,7 +117,7 @@ func landlockNetArgs(cfg *Config) []string {
 	var args []string
 
 	if cfg.Restrictions.RestrictBindTCP || cfg.Restrictions.RestrictConnectTCP {
-		args = append(args, cfg.LandlockNet)
+		args = append(args, cfg.LandlockNetBin)
 
 		if cfg.Restrictions.RestrictBindTCP {
 			for _, port := range cfg.Restrictions.BindTCP {
@@ -142,7 +142,7 @@ func prlimitArgs(cfg *Config) []string {
 	//nolint:mnd // Max number of arguments
 	args := make([]string, 0, 8)
 
-	args = append(args, cfg.Prlimit, fmt.Sprintf("--core=%d", cfg.Limits.CoreDumpSize.Uint64()))
+	args = append(args, cfg.PrlimitBin, fmt.Sprintf("--core=%d", cfg.Limits.CoreDumpSize.Uint64()))
 	if cfg.Limits.CPU > 0 {
 		args = append(args, fmt.Sprintf("--cpu=%.0f", cfg.Limits.CPU.Seconds()))
 	}

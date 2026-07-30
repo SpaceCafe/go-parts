@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	DefaultLandlock    = "landlock-restrict"
-	DefaultLandlockNet = "landlock-restrict-net"
-	DefaultPrlimit     = "prlimit"
+	DefaultLandlockBin    = "landlock-restrict"
+	DefaultLandlockNetBin = "landlock-restrict-net"
+	DefaultPrlimitBin     = "prlimit"
 )
 
 var _ config.Defaultable = (*Config)(nil)
@@ -83,19 +83,35 @@ type Restrictions struct {
 	RestrictConnectTCP bool `json:"restrictConnectTCP" yaml:"restrictConnectTCP"`
 }
 
+// Config configures a Runner: the external binaries it shells out to, the restrictions and limits
+// applied to spawned processes, and whether their resources are cleaned up automatically.
 type Config struct {
-	Landlock     string       `json:"landlock"     yaml:"landlock"`
-	LandlockNet  string       `json:"landlockNet"  yaml:"landlockNet"`
-	Prlimit      string       `json:"prlimit"      yaml:"prlimit"`
+	// LandlockBin is the path to the landlock-restrict binary used to apply filesystem
+	// restrictions. Resolved via exec.LookPath during Validate.
+	LandlockBin string `json:"landlockBin" yaml:"landlockBin"`
+
+	// LandlockNetBin is the path to the landlock-restrict-net binary used to apply network
+	// restrictions. Resolved via exec.LookPath during Validate.
+	LandlockNetBin string `json:"landlockNetBin" yaml:"landlockNetBin"`
+
+	// PrlimitBin is the path to the prlimit binary used to apply resource limits. Resolved via
+	// exec.LookPath during Validate.
+	PrlimitBin string `json:"prlimitBin" yaml:"prlimitBin"`
+
+	// Restrictions are the filesystem and network allowlists applied to a spawned process.
 	Restrictions Restrictions `json:"restrictions" yaml:"restrictions"`
-	Limits       Limits       `json:"limits"       yaml:"limits"`
-	AutoCleanup  bool         `json:"autoCleanup"  yaml:"autoCleanup"`
+
+	// Limits are the POSIX resource limits applied to a spawned process.
+	Limits Limits `json:"limits" yaml:"limits"`
+
+	// AutoCleanup controls whether a process's resources are released automatically once it exits.
+	AutoCleanup bool `json:"autoCleanup" yaml:"autoCleanup"`
 }
 
 func (c *Config) SetDefaults() {
-	c.Landlock = DefaultLandlock
-	c.LandlockNet = DefaultLandlockNet
-	c.Prlimit = DefaultPrlimit
+	c.LandlockBin = DefaultLandlockBin
+	c.LandlockNetBin = DefaultLandlockNetBin
+	c.PrlimitBin = DefaultPrlimitBin
 
 	c.Restrictions.BindTCP = []int{}
 	c.Restrictions.ConnectTCP = []int{}
@@ -110,9 +126,9 @@ func (c *Config) SetDefaults() {
 
 func (c *Config) Validate() error {
 	return errors.Join(
-		validate.Validate("landlock", c.Landlock, lookPath(&c.Landlock)),
-		validate.Validate("landlock net", c.LandlockNet, lookPath(&c.LandlockNet)),
-		validate.Validate("prlimit", c.Prlimit, lookPath(&c.Prlimit)),
+		validate.Validate("landlock bin", c.LandlockBin, lookPath(&c.LandlockBin)),
+		validate.Validate("landlock net bin", c.LandlockNetBin, lookPath(&c.LandlockNetBin)),
+		validate.Validate("prlimit bin", c.PrlimitBin, lookPath(&c.PrlimitBin)),
 		validate.Validate(
 			"bind tcp restrictions",
 			c.Restrictions.BindTCP,
