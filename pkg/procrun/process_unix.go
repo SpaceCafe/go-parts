@@ -22,8 +22,8 @@ const (
 
 // applyArguments configures a Runner's arguments based on its configuration.
 func applyArguments(r *Runner) error {
-	r.args = landlockArgs(r.cfg)
-	r.args = append(r.args, landlockNetArgs(r.cfg)...)
+	r.args = landlockNetArgs(r.cfg)
+	r.args = append(r.args, landlockArgs(r.cfg)...)
 	r.args = append(r.args, prlimitArgs(r.cfg)...)
 
 	r.Log.Debug("procrun: created args to restrict processes", "args", r.args)
