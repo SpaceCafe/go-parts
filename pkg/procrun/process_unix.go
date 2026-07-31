@@ -4,9 +4,10 @@ package procrun
 
 import (
 	"errors"
-	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -18,11 +19,12 @@ const (
 	// ExitCodeSigKill is the exit status code for SIGKILL, indicating the container received a SIGKILL
 	// by the underlying operating system.
 	ExitCodeSigKill = ExitCodeBase + int(syscall.SIGKILL) // equals 137
+
+	listSeparator = string(os.PathListSeparator)
 )
 
 // applyArguments configures a Runner's arguments based on its configuration.
 func applyArguments(r *Runner) error {
-	r.args = landlockNetArgs(r.cfg)
 	r.args = append(r.args, landlockArgs(r.cfg)...)
 	r.args = append(r.args, prlimitArgs(r.cfg)...)
 
@@ -47,12 +49,7 @@ func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 func checkCapabilities(runner *Runner) {
 	if runner.cfg.LandlockBin == "" {
 		runner.Log.Warn("procrun: landlock-restrict binary not found." +
-			"Process's filesystem restrictions will not be applied! Please check or ignore if intended.")
-	}
-
-	if runner.cfg.LandlockNetBin == "" {
-		runner.Log.Warn("procrun: landlock-restrict-net binary not found." +
-			"Process's network restrictions will not be applied! Please check or ignore if intended.")
+			"Process's filesystem and network restrictions will not be applied! Please check or ignore if intended.")
 	}
 
 	if runner.cfg.PrlimitBin == "" {
@@ -85,56 +82,26 @@ func getExitCode(err error) int {
 // landlockArgs constructs a list of command-line arguments based on the filesystem restrictions defined in the Config.
 func landlockArgs(cfg *Config) []string {
 	//nolint:mnd // Max number of arguments
-	args := make(
-		[]string,
-		0,
-		len(
-			cfg.Restrictions.RODirs,
-		)+len(
-			cfg.Restrictions.RWDirs,
-		)+len(
-			cfg.Restrictions.ROFiles,
-		)+len(
-			cfg.Restrictions.RWFiles,
-		)+6,
+	args := make([]string, 0, 8)
+
+	args = append(
+		args,
+		cfg.LandlockBin,
+		"-ro.file="+strings.Join(cfg.Restrictions.ROFiles, listSeparator),
+		"-rw.file="+strings.Join(cfg.Restrictions.RWFiles, listSeparator),
+		"-ro.dir="+strings.Join(cfg.Restrictions.RODirs, listSeparator),
+		"-rw.dir="+strings.Join(cfg.Restrictions.RWDirs, listSeparator),
 	)
 
-	args = append(args, cfg.LandlockBin, "-ro")
-	args = append(args, cfg.Restrictions.RODirs...)
-	args = append(args, "-rw")
-	args = append(args, cfg.Restrictions.RWDirs...)
-	args = append(args, "-rofiles")
-	args = append(args, cfg.Restrictions.ROFiles...)
-	args = append(args, "-rwfiles")
-	args = append(args, cfg.Restrictions.RWFiles...)
-	args = append(args, "--")
-
-	return args
-}
-
-// landlockNetArgs constructs a list of command-line arguments based on the network restrictions defined in the Config.
-func landlockNetArgs(cfg *Config) []string {
-	var args []string
-
-	if cfg.Restrictions.RestrictBindTCP || cfg.Restrictions.RestrictConnectTCP {
-		args = append(args, cfg.LandlockNetBin)
-
-		if cfg.Restrictions.RestrictBindTCP {
-			for _, port := range cfg.Restrictions.BindTCP {
-				args = append(args, "-tcp.bind", strconv.Itoa(port))
-			}
-		}
-
-		if cfg.Restrictions.RestrictConnectTCP {
-			for _, port := range cfg.Restrictions.ConnectTCP {
-				args = append(args, "-tcp.connect", strconv.Itoa(port))
-			}
-		}
-
-		args = append(args, "--")
+	if cfg.Restrictions.RestrictBindTCP {
+		args = append(args, "-tcp.bind="+joinPorts(cfg.Restrictions.BindTCP))
 	}
 
-	return args
+	if cfg.Restrictions.RestrictConnectTCP {
+		args = append(args, "-tcp.connect="+joinPorts(cfg.Restrictions.ConnectTCP))
+	}
+
+	return append(args, "--")
 }
 
 // prlimitArgs constructs a list of command-line arguments based on the process resource limits defined in the Config.
@@ -142,28 +109,47 @@ func prlimitArgs(cfg *Config) []string {
 	//nolint:mnd // Max number of arguments
 	args := make([]string, 0, 8)
 
-	args = append(args, cfg.PrlimitBin, fmt.Sprintf("--core=%d", cfg.Limits.CoreDumpSize.Uint64()))
+	args = append(
+		args,
+		cfg.PrlimitBin,
+		"--core="+strconv.FormatUint(cfg.Limits.CoreDumpSize.Uint64(), 10),
+	)
+
 	if cfg.Limits.CPU > 0 {
-		args = append(args, fmt.Sprintf("--cpu=%.0f", cfg.Limits.CPU.Seconds()))
+		args = append(args, "--cpu="+strconv.FormatFloat(cfg.Limits.CPU.Seconds(), 'f', 0, 64))
 	}
 
 	if cfg.Limits.Memory > 0 {
-		args = append(args, fmt.Sprintf("--as=%d", cfg.Limits.Memory.Uint64()))
+		args = append(args, "--as="+strconv.FormatUint(cfg.Limits.Memory.Uint64(), 10))
 	}
 
 	if cfg.Limits.FileSize > 0 {
-		args = append(args, fmt.Sprintf("--fsize=%d", cfg.Limits.FileSize.Uint64()))
+		args = append(args, "--fsize="+strconv.FormatUint(cfg.Limits.FileSize.Uint64(), 10))
 	}
 
 	if cfg.Limits.MaxOpenFiles > 0 {
-		args = append(args, fmt.Sprintf("--nofile=%d", cfg.Limits.MaxOpenFiles))
+		args = append(args, "--nofile="+strconv.FormatUint(cfg.Limits.MaxOpenFiles, 10))
 	}
 
 	if cfg.Limits.MaxProcesses > 0 {
-		args = append(args, fmt.Sprintf("--nproc=%d", cfg.Limits.MaxProcesses))
+		args = append(args, "--nproc="+strconv.FormatUint(cfg.Limits.MaxProcesses, 10))
 	}
 
 	args = append(args, "--")
 
 	return args
+}
+
+func joinPorts(nums []int) string {
+	var builder strings.Builder
+
+	for i, n := range nums {
+		if i > 0 {
+			builder.WriteString(listSeparator)
+		}
+
+		builder.WriteString(strconv.Itoa(n))
+	}
+
+	return builder.String()
 }

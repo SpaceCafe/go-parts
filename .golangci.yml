@@ -21,6 +21,7 @@ linters:
           allow:
             - $gostd
             - github.com/goccy/go-yaml
+            - github.com/landlock-lsm/go-landlock/landlock
             - github.com/spacecafe/go-parts
             - golang.org/x/crypto/bcrypt
             - golang.org/x/sys/unix

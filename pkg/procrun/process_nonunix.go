@@ -25,7 +25,8 @@ func applyProcessAttributes(_ *Runner, _ *exec.Cmd) error {
 
 // checkCapabilities checks and logs if the required binaries are available.
 func checkCapabilities(r *Runner) {
-	r.Log.Warn("procrun: landlock LSM and rlimits are only available on Linux. Process's filesystem, network, and resource restrictions will not be applied!")
+	r.Log.Warn("procrun: landlock LSM and rlimits are only available on Linux." +
+		"Process's filesystem, network, and resource restrictions will not be applied!")
 }
 
 // getExitCode extracts and returns the appropriate exit code from the provided error.

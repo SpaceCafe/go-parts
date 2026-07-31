@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	DefaultLandlockBin    = "landlock-restrict"
-	DefaultLandlockNetBin = "landlock-restrict-net"
-	DefaultPrlimitBin     = "prlimit"
+	DefaultLandlockBin = "landlock-restrict"
+	DefaultPrlimitBin  = "prlimit"
 )
 
 var _ config.Defaultable = (*Config)(nil)
@@ -110,7 +109,6 @@ type Config struct {
 
 func (c *Config) SetDefaults() {
 	c.LandlockBin = DefaultLandlockBin
-	c.LandlockNetBin = DefaultLandlockNetBin
 	c.PrlimitBin = DefaultPrlimitBin
 
 	c.Restrictions.BindTCP = []int{}
@@ -127,7 +125,6 @@ func (c *Config) SetDefaults() {
 func (c *Config) Validate() error {
 	return errors.Join(
 		validate.Validate("landlock bin", c.LandlockBin, lookPath(&c.LandlockBin)),
-		validate.Validate("landlock net bin", c.LandlockNetBin, lookPath(&c.LandlockNetBin)),
 		validate.Validate("prlimit bin", c.PrlimitBin, lookPath(&c.PrlimitBin)),
 		validate.Validate(
 			"bind tcp restrictions",
