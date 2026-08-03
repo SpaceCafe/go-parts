@@ -30,6 +30,7 @@ func TestEnvSource_Load(t *testing.T) {
 		Options []int     `env:"OPTIONS"`
 		Sub     SubConfig `env:"SUB"`
 		Port    int       `env:"PORT"`
+		CCBin   string
 	}
 
 	type fields struct {
@@ -61,6 +62,7 @@ func TestEnvSource_Load(t *testing.T) {
 					"APP_SUB_VALUE":                   "nested-payload",
 					"APP_SUB_NOT_ANNOTATED_VALUE":     "42",
 					"APP_REF_SUB_NOT_ANNOTATED_VALUE": "42",
+					"APP_CC_BIN":                      "gcc",
 				},
 			},
 			want: Config{
@@ -71,6 +73,7 @@ func TestEnvSource_Load(t *testing.T) {
 				Options: []int{1, 2, 3},
 				Sub:     SubConfig{Value: "nested-payload", NotAnnotatedValue: 42},
 				RefSub:  &SubConfig{NotAnnotatedValue: 42},
+				CCBin:   "gcc",
 			},
 		},
 		{
@@ -82,9 +85,10 @@ func TestEnvSource_Load(t *testing.T) {
 					"NAME":      "standalone",
 					"PORT":      "9000",
 					"PORT_FILE": "non-existent",
+					"CC_BIN":    "gcc",
 				},
 			},
-			want: Config{Name: "standalone", Port: 9000},
+			want: Config{Name: "standalone", Port: 9000, CCBin: "gcc"},
 		},
 		{
 			name:    "invalid target (not a pointer)",

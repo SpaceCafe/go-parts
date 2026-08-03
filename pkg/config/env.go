@@ -126,14 +126,20 @@ func createEnvName(prefix, fieldName, envTag string) string {
 
 	if envTag != "" {
 		result.WriteString(strings.ToUpper(envTag))
-	} else {
-		for i, r := range fieldName {
-			if i > 0 && r >= 'A' && r <= 'Z' {
+
+		return result.String()
+	}
+
+	runes := []rune(fieldName)
+	for i, r := range fieldName {
+		if i > 0 && unicode.IsUpper(r) {
+			nextIsLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
+			if unicode.IsLower(runes[i-1]) || nextIsLower {
 				result.WriteRune('_')
 			}
-
-			result.WriteRune(unicode.ToUpper(r))
 		}
+
+		result.WriteRune(unicode.ToUpper(r))
 	}
 
 	return result.String()
