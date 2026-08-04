@@ -163,3 +163,67 @@ func TestNew(t *testing.T) {
 	second := config.New[MockConfig]()
 	assert.NotSame(t, first, second)
 }
+
+func TestGenerateTemplate(t *testing.T) {
+	t.Parallel()
+
+	type args struct {
+		target    config.Validatable
+		filename  string
+		envPrefix string
+	}
+
+	tests := []struct {
+		compare func(t *testing.T, expected, actual string) bool
+		args    args
+		name    string
+		want    string
+	}{
+		{
+			equalString,
+			args{target: &MockConfig{}, filename: "test.env"},
+			"env config",
+			"NAME=\nPORT=\n",
+		},
+		{
+			equalString,
+			args{target: &MockConfig{}, filename: "test.env", envPrefix: "TEST"},
+			"env prefixed config",
+			"TEST_NAME=\nTEST_PORT=\n",
+		},
+		{
+			equalJSON,
+			args{target: &MockConfig{}, filename: "test.json"},
+			"json config",
+			`{"name":"default-app","port":8080}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tmpDir := t.TempDir()
+			filePath := filepath.Join(tmpDir, tt.args.filename)
+
+			err := config.GenerateTemplate(tt.args.target, filePath, tt.args.envPrefix)
+			require.NoError(t, err)
+			require.FileExists(t, filePath)
+
+			content, err := os.ReadFile(filePath)
+			require.NoError(t, err)
+			assert.True(t, tt.compare(t, tt.want, string(content)))
+		})
+	}
+}
+
+func equalString(t *testing.T, expected, actual string) bool {
+	t.Helper()
+
+	return assert.Equal(t, expected, actual)
+}
+
+func equalJSON(t *testing.T, expected, actual string) bool {
+	t.Helper()
+
+	return assert.JSONEq(t, expected, actual)
+}

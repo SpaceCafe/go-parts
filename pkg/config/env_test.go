@@ -24,13 +24,13 @@ func TestEnvSource_Load(t *testing.T) {
 	type Config struct {
 		RefSub  *SubConfig
 		hidden  string
-		Skip    string    `env:"-"`
-		Name    string    `env:"NAME"`
+		Skip    string `env:"-"`
+		Name    string `env:"NAME"`
+		CCBin   string
 		Tags    []string  `env:"TAGS"`
 		Options []int     `env:"OPTIONS"`
 		Sub     SubConfig `env:"SUB"`
 		Port    int       `env:"PORT"`
-		CCBin   string
 	}
 
 	type fields struct {

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"reflect"
@@ -20,9 +21,27 @@ var (
 
 // EnvSource loads configuration from environment variables.
 type EnvSource struct {
-	// Prefix is an optional application prefix for environment variables.
-	// If set to "APP", it will look for variables like "APP_DATABASE_HOST".
+	names  *[]string
 	Prefix string
+}
+
+func (s EnvSource) GenerateTemplate(target any, output io.Writer) error {
+	s.names = new([]string)
+
+	err := s.Load(target)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+
+	for _, name := range *s.names {
+		_, err1 := output.Write([]byte(name))
+		_, err2 := output.Write([]byte("=\n"))
+		errs = append(errs, err1, err2)
+	}
+
+	return errors.Join(errs...)
 }
 
 func (s EnvSource) Load(target any) error {
@@ -98,6 +117,10 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 			continue
 		}
 
+		if s.names != nil {
+			*s.names = append(*s.names, envName)
+		}
+
 		// Load the environment variable value
 		envValue, exists := lookupEnv(envName)
 		if !exists {
@@ -131,15 +154,15 @@ func createEnvName(prefix, fieldName, envTag string) string {
 	}
 
 	runes := []rune(fieldName)
-	for i, r := range fieldName {
-		if i > 0 && unicode.IsUpper(r) {
+	for i, char := range fieldName {
+		if i > 0 && unicode.IsUpper(char) {
 			nextIsLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
 			if unicode.IsLower(runes[i-1]) || nextIsLower {
 				result.WriteRune('_')
 			}
 		}
 
-		result.WriteRune(unicode.ToUpper(r))
+		result.WriteRune(unicode.ToUpper(char))
 	}
 
 	return result.String()

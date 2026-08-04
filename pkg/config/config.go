@@ -4,12 +4,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 )
+
+const defaultFilePermission = 0o600
 
 var (
 	ErrInvalidTarget  = errors.New("config: invalid target")
@@ -30,6 +33,7 @@ type Validatable interface {
 
 // Source defines a configuration source.
 type Source interface {
+	GenerateTemplate(target any, output io.Writer) error
 	Load(target any) error
 }
 
@@ -44,7 +48,20 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 		source  Source
 	)
 
-	for _, filePath := range configPaths(name) {
+	configPath := flag.String("config", "", "path to config file")
+	isGenerateTemplate := flag.Bool(
+		"generate-template",
+		false,
+		"generate a configuration template file",
+	)
+
+	flag.Parse()
+
+	if *isGenerateTemplate {
+		return GenerateTemplate(target, *configPath, envPrefix)
+	}
+
+	for _, filePath := range configPaths(name, *configPath) {
 		if filePath == "" || filePath == "." || filePath == "./" {
 			continue
 		}
@@ -66,6 +83,47 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 	sources = append(sources, &EnvSource{Prefix: envPrefix})
 
 	return Load(target, sources...)
+}
+
+// GenerateTemplate writes a configuration template for the target and writes it to the specified file.
+func GenerateTemplate(target Validatable, filename, envPrefix string) (err error) {
+	err = validatePointerToStruct(target)
+	if err != nil {
+		return err
+	}
+
+	if filename == "" {
+		filename = "config.tmpl.json"
+	}
+
+	// Apply defaults if the target implements Defaultable
+	if defaultable, ok := target.(Defaultable); ok {
+		defaultable.SetDefaults()
+	}
+
+	file, err := os.OpenFile(
+		filepath.Clean(filename),
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		defaultFilePermission,
+	)
+	if err != nil {
+		return err
+	}
+	defer func() { err = file.Close() }()
+
+	var source Source
+
+	if strings.HasSuffix(filename, ".env") {
+		source = &EnvSource{Prefix: envPrefix}
+	} else {
+		source, err = sourceFromSuffix(filename)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return source.GenerateTemplate(target, file)
 }
 
 // Load loads configuration from multiple sources and validates the result.
@@ -104,13 +162,9 @@ func New[T any, PT pointerDefaultable[T]]() *T {
 }
 
 // configPaths generates a list of potential configuration file paths for the given application name.
-func configPaths(name string) []string {
-	configPath := flag.String("config", "", "path to config file")
-
-	flag.Parse()
-
+func configPaths(name, configPath string) []string {
 	filePaths := []string{
-		filepath.Clean(*configPath),
+		filepath.Clean(configPath),
 		filepath.Join(".", name+".json"),
 		filepath.Join(".", name+".yml"),
 		filepath.Join(".", name+".yaml"),

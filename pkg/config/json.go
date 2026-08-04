@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -11,6 +12,10 @@ var _ Source = (*JSONSource)(nil)
 // JSONSource loads configuration from a JSON file.
 type JSONSource struct {
 	Path string
+}
+
+func (JSONSource) GenerateTemplate(target any, output io.Writer) error {
+	return json.NewEncoder(output).Encode(target)
 }
 
 func (s JSONSource) Load(target any) error {

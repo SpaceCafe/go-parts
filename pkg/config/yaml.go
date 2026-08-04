@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/goccy/go-yaml"
@@ -14,6 +15,10 @@ var _ Source = (*YAMLSource)(nil)
 // YAMLSource loads configuration from a YAML file.
 type YAMLSource struct {
 	Path string
+}
+
+func (YAMLSource) GenerateTemplate(target any, output io.Writer) error {
+	return yaml.NewEncoder(output).Encode(target)
 }
 
 func (s YAMLSource) Load(target any) error {
