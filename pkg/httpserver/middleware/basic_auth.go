@@ -39,7 +39,7 @@ type BasicAuthConfig struct {
 	Principals map[string]string `json:"principals" yaml:"principals"`
 
 	// Authenticator validates a username and password.
-	Authenticator Authenticator
+	Authenticator Authenticator `json:"-" yaml:"-" env:"-"`
 
 	// Tokens defines a list of pre-approved tokens for token-based authentication.
 	Tokens []string `json:"tokens" yaml:"tokens"`

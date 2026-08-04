@@ -89,10 +89,6 @@ type Config struct {
 	// restrictions. Resolved via exec.LookPath during Validate.
 	LandlockBin string `json:"landlockBin" yaml:"landlockBin"`
 
-	// LandlockNetBin is the path to the landlock-restrict-net binary used to apply network
-	// restrictions. Resolved via exec.LookPath during Validate.
-	LandlockNetBin string `json:"landlockNetBin" yaml:"landlockNetBin"`
-
 	// PrlimitBin is the path to the prlimit binary used to apply resource limits. Resolved via
 	// exec.LookPath during Validate.
 	PrlimitBin string `json:"prlimitBin" yaml:"prlimitBin"`
