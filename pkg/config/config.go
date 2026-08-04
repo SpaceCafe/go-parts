@@ -58,7 +58,12 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 	flag.Parse()
 
 	if *isGenerateTemplate {
-		return GenerateTemplate(target, *configPath, envPrefix)
+		err := GenerateTemplate(target, *configPath, envPrefix)
+		if err != nil {
+			return err
+		}
+
+		os.Exit(0)
 	}
 
 	for _, filePath := range configPaths(name, *configPath) {
