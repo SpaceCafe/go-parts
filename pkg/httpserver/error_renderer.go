@@ -3,7 +3,6 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/spacecafe/go-parts/pkg/typeconv"
 )
@@ -34,20 +33,25 @@ func RenderErrorAsProblem(resp http.ResponseWriter, _ *http.Request, code int, e
 
 	statusText := http.StatusText(code)
 
-	_, _ = resp.Write([]byte(`{"type": "/errors/`))
-	_, _ = resp.Write([]byte(typeconv.ToKebabCase(statusText)))
-	_, _ = resp.Write([]byte(`", "title": "`))
-	_, _ = resp.Write([]byte(statusText))
-	_, _ = resp.Write([]byte(`", "status": `))
-	_, _ = resp.Write([]byte(strconv.Itoa(code)))
-	_, _ = resp.Write([]byte(`, "detail": "`))
-
-	if err == nil || err.Error() == "" {
-		_, _ = resp.Write([]byte(statusText))
-	} else {
-		//nolint:errchkjson // Error encoding is intentionally ignored as this is already an error handler.
-		_ = json.NewEncoder(resp).Encode(err.Error())
+	detail := statusText
+	if err != nil && err.Error() != "" {
+		detail = err.Error()
 	}
 
-	_, _ = resp.Write([]byte(`"}`))
+	// Encode the whole document at once, so the detail is escaped as a proper JSON string.
+	//nolint:errchkjson // Error encoding is intentionally ignored as this is already an error handler.
+	_ = json.NewEncoder(resp).Encode(problem{
+		Type:   "/errors/" + typeconv.ToKebabCase(statusText),
+		Title:  statusText,
+		Status: code,
+		Detail: detail,
+	})
+}
+
+// problem is the RFC 7807 problem details document written by RenderErrorAsProblem.
+type problem struct {
+	Type   string `json:"type"`
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
+	Status int    `json:"status"`
 }
