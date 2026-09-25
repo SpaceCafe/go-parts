@@ -162,6 +162,22 @@ func TestHTTPServer_Start_InvalidKeyPair(t *testing.T) {
 	require.ErrorIs(t, server.Start(context.Background()), fs.ErrNotExist)
 }
 
+func TestNew_ListenAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"127.0.0.1": "127.0.0.1:8080",
+		"localhost": "localhost:8080",
+		"::1":       "[::1]:8080",
+		"":          ":8080",
+	}
+
+	for host, wantAddr := range tests {
+		server := httpserver.New(&httpserver.Config{Host: host, Port: 8080})
+		assert.Equal(t, wantAddr, server.Server.Addr, "host %q", host)
+	}
+}
+
 func TestHTTPServer_Stop(t *testing.T) {
 	t.Parallel()
 
