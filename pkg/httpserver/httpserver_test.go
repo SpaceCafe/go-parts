@@ -124,10 +124,19 @@ func TestHTTPServer_TLSHandshake(t *testing.T) {
 	require.True(t, roots.AppendCertsFromPEM(certPEM))
 
 	client := &http.Client{Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: "localhost", MinVersion: tls.VersionTLS12},
+		TLSClientConfig: &tls.Config{
+			RootCAs:    roots,
+			ServerName: "localhost",
+			MinVersion: tls.VersionTLS12,
+		},
 	}}
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://127.0.0.1:8444/", http.NoBody)
+	req, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"https://127.0.0.1:8444/",
+		http.NoBody,
+	)
 	require.NoError(t, err)
 
 	resp, err := client.Do(req)
@@ -142,7 +151,11 @@ func TestHTTPServer_Start_InvalidKeyPair(t *testing.T) {
 	t.Parallel()
 
 	server := httpserver.New(
-		&httpserver.Config{Port: 8445, CertFile: "/nonexistent/cert.pem", KeyFile: "/nonexistent/key.pem"},
+		&httpserver.Config{
+			Port:     8445,
+			CertFile: "/nonexistent/cert.pem",
+			KeyFile:  "/nonexistent/key.pem",
+		},
 		httpserver.WithLogger(&mockLogger{}),
 	)
 

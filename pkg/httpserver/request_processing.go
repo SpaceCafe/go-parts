@@ -13,7 +13,18 @@ import (
 var (
 	ErrJSONBodyDecoding = errors.New("httpserver: failed to decode JSON body")
 	ErrNoKey            = errors.New("httpserver: key must not be empty")
+	ErrRequestTooLarge  = errors.New("httpserver: request body too large")
 )
+
+// wrapBodyError maps the error returned by http.MaxBytesReader to ErrRequestTooLarge and wraps
+// every other error with fallback.
+func wrapBodyError(fallback, err error) error {
+	if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
+		return fmt.Errorf("%w: limit is %d bytes", ErrRequestTooLarge, maxBytesErr.Limit)
+	}
+
+	return fmt.Errorf("%w: %s", fallback, err.Error())
+}
 
 // GetFormValue retrieves and converts a form value from an HTTP request to the specified type. If
 // the form value is missing, the defaultValue is returned. The validators are optional and perform
@@ -34,11 +45,12 @@ func GetFormValue[T any](
 
 // GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. If `v` implements a
 // Validate error method, it is called after successful decoding and any
-// returned error is propagated to the caller.
+// returned error is propagated to the caller. The body is read without a limit of its own; wrap it
+// with middleware.MaxBodySize and check for ErrRequestTooLarge to answer with 413.
 func GetJSONBody(req *http.Request, target any) error {
 	err := json.NewDecoder(req.Body).Decode(target)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrJSONBodyDecoding, err.Error())
+		return wrapBodyError(ErrJSONBodyDecoding, err)
 	}
 
 	type validator interface {

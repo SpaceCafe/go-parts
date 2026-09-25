@@ -34,6 +34,9 @@ type File struct {
 	Code       int
 }
 
+// GetFileFromBody saves the request body to a temporary file. The body is read without a limit of
+// its own; wrap it with middleware.MaxBodySize to get File.Code 413 and ErrRequestTooLarge when a
+// client sends too much.
 func GetFileFromBody(req *http.Request, magicBytes []byte) *File {
 	file := &File{Cleanup: noopCleanup, reader: req.Body}
 	file.create(magicBytes)
@@ -115,7 +118,12 @@ func (f *File) create(magicBytes []byte) {
 
 	err = f.write()
 	if err != nil {
-		f.fail(http.StatusInternalServerError, err)
+		code := http.StatusInternalServerError
+		if errors.Is(err, ErrRequestTooLarge) {
+			code = http.StatusRequestEntityTooLarge
+		}
+
+		f.fail(code, err)
 
 		return
 	}
@@ -166,7 +174,7 @@ func (f *File) write() error {
 	// Recombine the already-read magic bytes with the rest of the body.
 	_, err = io.Copy(file, io.MultiReader(bytes.NewReader(f.magicBytes), f.reader))
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrWriteFile, err.Error())
+		return wrapBodyError(ErrWriteFile, err)
 	}
 
 	return nil

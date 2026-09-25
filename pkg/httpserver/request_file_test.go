@@ -120,6 +120,19 @@ func TestFile_Move(t *testing.T) {
 	}
 }
 
+func TestGetFileFromBody_TooLarge(t *testing.T) {
+	t.Parallel()
+
+	req := newBodyRequest(t, strings.NewReader("payload"))
+	req.Body = http.MaxBytesReader(httptest.NewRecorder(), req.Body, 3)
+
+	file := httpserver.GetFileFromBody(req, nil)
+
+	require.ErrorIs(t, file.Err, httpserver.ErrRequestTooLarge)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, file.Code)
+	assert.Empty(t, file.Dir)
+}
+
 func TestFile_Move_CleanupKeepsTargetDir(t *testing.T) {
 	t.Parallel()
 
