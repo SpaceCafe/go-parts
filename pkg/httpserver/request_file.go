@@ -11,11 +11,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+
+	"github.com/spacecafe/go-parts/pkg/xutil"
 )
 
 var (
 	ErrInvalidFileHeader = errors.New("httpserver: invalid file header")
 	ErrInvalidFileValue  = errors.New("httpserver: file value must be a JSON string")
+	ErrInvalidFilename   = errors.New("httpserver: filename must be a single path element")
 	ErrReadFileHeader    = errors.New("httpserver: failed to read file header")
 	ErrTargetDir         = errors.New("httpserver: failed to use target directory")
 	ErrTempDirCreation   = errors.New("httpserver: failed to create temporary directory")
@@ -50,9 +54,20 @@ func GetFileFromBody(req *http.Request, magicBytes []byte) *File {
 	return file
 }
 
+// rename is os.Rename, replaceable in tests to simulate a cross-filesystem move.
+//
+//nolint:gochecknoglobals // Test seam for the EXDEV fallback.
+var rename = os.Rename
+
 // Move moves the file into the given directory under the filename and returns the resulting path.
-// If the target directory is empty, the file is renamed.
+// If the target directory is empty, the file is renamed. The filename must be a single path
+// element, so a client-supplied name cannot escape dir. When dir is on another filesystem than the
+// temporary directory, the file is copied and the original removed.
 func (f *File) Move(dir, filename string) (err error) {
+	if filename != filepath.Base(filename) || filename == "." || filename == ".." {
+		return fmt.Errorf("%w: %q", ErrInvalidFilename, filename)
+	}
+
 	if dir == "" {
 		dir = f.Dir
 	} else {
@@ -64,7 +79,7 @@ func (f *File) Move(dir, filename string) (err error) {
 
 	targetPath := filepath.Join(dir, filename)
 
-	err = os.Rename(f.Path, targetPath)
+	err = moveFile(f.Path, targetPath)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
 	}
@@ -81,6 +96,24 @@ func (f *File) Move(dir, filename string) (err error) {
 	f.Path = targetPath
 
 	return nil
+}
+
+// moveFile renames src to dest, falling back to copy and remove when they are on different
+// filesystems (for example a tmpfs /tmp), where rename fails with EXDEV.
+func moveFile(src, dest string) error {
+	err := rename(src, dest)
+	if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+
+	err = xutil.CopyFile(src, dest)
+	if err != nil {
+		_ = os.Remove(dest)
+
+		return err
+	}
+
+	return os.Remove(src)
 }
 
 func (f *File) UnmarshalJSON(data []byte) error {

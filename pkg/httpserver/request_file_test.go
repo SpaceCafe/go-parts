@@ -347,3 +347,24 @@ func newBodyRequest(t *testing.T, body io.Reader) *http.Request {
 
 	return httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", body)
 }
+
+func TestFile_Move_InvalidFilename(t *testing.T) {
+	t.Parallel()
+
+	for _, filename := range []string{"", ".", "..", "../escape.bin", "sub/file.bin", "/etc/passwd"} {
+		t.Run(filename, func(t *testing.T) {
+			t.Parallel()
+
+			file := httpserver.GetFileFromBody(newBodyRequest(t, strings.NewReader("payload")), nil)
+			require.NoError(t, file.Err)
+
+			t.Cleanup(func() { _ = file.Cleanup() })
+
+			path := file.Path
+
+			require.ErrorIs(t, file.Move(t.TempDir(), filename), httpserver.ErrInvalidFilename)
+			assert.Equal(t, path, file.Path)
+			assert.FileExists(t, file.Path)
+		})
+	}
+}
