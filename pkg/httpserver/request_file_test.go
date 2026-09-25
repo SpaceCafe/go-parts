@@ -120,6 +120,40 @@ func TestFile_Move(t *testing.T) {
 	}
 }
 
+func TestFile_Move_CleanupKeepsTargetDir(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	existingFile := filepath.Join(targetDir, "earlier.bin")
+	require.NoError(t, os.WriteFile(existingFile, []byte("earlier"), 0o600))
+
+	file := httpserver.GetFileFromBody(newBodyRequest(t, strings.NewReader("payload")), nil)
+	require.NoError(t, file.Err)
+
+	sourceDir := file.Dir
+
+	require.NoError(t, file.Move(targetDir, "output.bin"))
+	require.NoError(t, file.Cleanup())
+
+	assert.NoDirExists(t, sourceDir)
+	assertContent(t, existingFile, "earlier")
+	assertContent(t, filepath.Join(targetDir, "output.bin"), "payload")
+}
+
+func TestFile_Move_CleanupRemovesTempDirAfterRename(t *testing.T) {
+	t.Parallel()
+
+	file := httpserver.GetFileFromBody(newBodyRequest(t, strings.NewReader("payload")), nil)
+	require.NoError(t, file.Err)
+
+	sourceDir := file.Dir
+
+	require.NoError(t, file.Move("", "renamed.bin"))
+	require.NoError(t, file.Cleanup())
+
+	assert.NoDirExists(t, sourceDir)
+}
+
 func TestFile_UnmarshalJSON(t *testing.T) {
 	t.Parallel()
 

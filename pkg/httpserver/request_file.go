@@ -64,10 +64,12 @@ func (f *File) Move(dir, filename string) (err error) {
 		return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
 	}
 
-	// Don't clean up if new dir is equal to or a subdirectory of old dir.
+	// Don't clean up if new dir is equal to or a subdirectory of old dir. Once the file has left the
+	// temporary directory, Cleanup must not touch it or the caller's target directory.
 	if !strings.HasPrefix(dir+string(filepath.Separator), f.Dir+string(filepath.Separator)) &&
 		f.Dir != dir {
 		_ = f.Cleanup()
+		f.Cleanup = noopCleanup
 	}
 
 	f.Dir = dir
@@ -107,7 +109,9 @@ func (f *File) create(magicBytes []byte) {
 	}
 
 	f.Path = filepath.Join(f.Dir, "input")
-	f.Cleanup = func() error { return os.RemoveAll(f.Dir) }
+	// Capture the directory now: Move rewrites f.Dir, and Cleanup must only ever remove the temp dir.
+	tempDir := f.Dir
+	f.Cleanup = func() error { return os.RemoveAll(tempDir) }
 
 	err = f.write()
 	if err != nil {
