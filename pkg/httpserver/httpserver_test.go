@@ -5,10 +5,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"io/fs"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,6 +99,54 @@ func TestHTTPServer_Start(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHTTPServer_TLSHandshake(t *testing.T) {
+	t.Parallel()
+
+	certFile, keyFile := generateTestCert(t)
+
+	server := httpserver.New(
+		&httpserver.Config{Host: "127.0.0.1", Port: 8444, CertFile: certFile, KeyFile: keyFile},
+		httpserver.WithLogger(&mockLogger{}),
+	)
+	server.Server.Handler = http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
+		resp.WriteHeader(http.StatusNoContent)
+	})
+
+	require.NoError(t, server.Start(context.Background()))
+	t.Cleanup(func() { _ = server.Server.Shutdown(context.Background()) })
+
+	certPEM, err := os.ReadFile(certFile)
+	require.NoError(t, err)
+
+	roots := x509.NewCertPool()
+	require.True(t, roots.AppendCertsFromPEM(certPEM))
+
+	client := &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: "localhost", MinVersion: tls.VersionTLS12},
+	}}
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://127.0.0.1:8444/", http.NoBody)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+
+	_ = resp.Body.Close()
+
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func TestHTTPServer_Start_InvalidKeyPair(t *testing.T) {
+	t.Parallel()
+
+	server := httpserver.New(
+		&httpserver.Config{Port: 8445, CertFile: "/nonexistent/cert.pem", KeyFile: "/nonexistent/key.pem"},
+		httpserver.WithLogger(&mockLogger{}),
+	)
+
+	require.ErrorIs(t, server.Start(context.Background()), fs.ErrNotExist)
 }
 
 type mockLogger struct{}

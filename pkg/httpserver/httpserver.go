@@ -61,11 +61,9 @@ func New(cfg *Config, opts ...Option) *HTTPServer {
 	}
 
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
+		// Certificates stay empty on purpose: Start passes the file paths to ListenAndServeTLS, which
+		// loads and parses the key pair before listening, so a bad file fails Start immediately.
 		obj.Server.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{{
-				Certificate: [][]byte{[]byte(cfg.CertFile)},
-				PrivateKey:  []byte(cfg.KeyFile),
-			}},
 			MinVersion: tls.VersionTLS12,
 		}
 	}
@@ -104,7 +102,7 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		if s.Server.TLSConfig == nil {
 			errCh <- s.Server.ListenAndServe()
 		} else {
-			errCh <- s.Server.ListenAndServeTLS("", "")
+			errCh <- s.Server.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile)
 		}
 	}()
 
