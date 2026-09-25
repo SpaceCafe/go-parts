@@ -1,11 +1,18 @@
 package httpserver
 
 import (
+	"bufio"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/spacecafe/go-parts/pkg/log"
+)
+
+var (
+	_ http.Flusher  = (*ResponseWriter)(nil)
+	_ http.Hijacker = (*ResponseWriter)(nil)
 )
 
 // ResponseWriter decorates an http.ResponseWriter with the logger and error renderer needed to
@@ -64,6 +71,21 @@ func logError(err error) error {
 	return err
 }
 
+// Flush sends buffered data to the client, satisfying http.Flusher for code that type-asserts the
+// writer (for example server-sent events). It does nothing when the underlying writer cannot flush.
+func (r *ResponseWriter) Flush() {
+	_ = http.NewResponseController(r.ResponseWriter).Flush()
+}
+
+// Hijack hands the connection over to the caller, satisfying http.Hijacker for code that
+// type-asserts the writer (for example WebSocket upgraders). It returns an error wrapping
+// http.ErrNotSupported when the underlying writer cannot be hijacked, such as on HTTP/2.
+func (r *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	//nolint:wrapcheck // Pass the error through unchanged so errors.Is(err, http.ErrNotSupported) works.
+	return http.NewResponseController(r.ResponseWriter).Hijack()
+}
+
+// Unwrap returns the underlying writer, so http.ResponseController reaches its optional methods.
 func (r *ResponseWriter) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }

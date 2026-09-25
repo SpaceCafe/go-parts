@@ -108,3 +108,65 @@ func TestRedact(t *testing.T) {
 	assert.Empty(t, err.Error())
 	assert.ErrorIs(t, err, errCause)
 }
+
+func TestResponseWriter_Flush(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+
+	var writer http.ResponseWriter = &httpserver.ResponseWriter{ResponseWriter: rec}
+
+	flusher, ok := writer.(http.Flusher)
+	require.True(t, ok)
+
+	flusher.Flush()
+
+	assert.True(t, rec.Flushed)
+}
+
+func TestResponseWriter_Hijack(t *testing.T) {
+	t.Parallel()
+
+	t.Run("supported", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(
+			http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
+				hijacker, ok := http.ResponseWriter(&httpserver.ResponseWriter{ResponseWriter: resp}).(http.Hijacker)
+				if !assert.True(t, ok) {
+					return
+				}
+
+				conn, buf, err := hijacker.Hijack()
+				if !assert.NoError(t, err) {
+					return
+				}
+
+				_, _ = buf.WriteString("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+				_ = buf.Flush()
+				_ = conn.Close()
+			}),
+		)
+		t.Cleanup(server.Close)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, http.NoBody)
+		require.NoError(t, err)
+
+		resp, err := server.Client().Do(req)
+		require.NoError(t, err)
+
+		_ = resp.Body.Close()
+
+		assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+	})
+
+	t.Run("not supported", func(t *testing.T) {
+		t.Parallel()
+
+		writer := &httpserver.ResponseWriter{ResponseWriter: httptest.NewRecorder()}
+
+		_, _, err := writer.Hijack()
+
+		require.ErrorIs(t, err, http.ErrNotSupported)
+	})
+}
