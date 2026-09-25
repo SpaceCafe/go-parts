@@ -4,6 +4,7 @@ linters:
   default: all
   disable:
     - exhaustruct
+    - exhaustruct_v5
     - gomodguard
     - nonamedreturns
     - wrapcheck
