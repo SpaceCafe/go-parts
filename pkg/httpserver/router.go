@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"sync/atomic"
 
 	"github.com/spacecafe/go-parts/pkg/log"
 )
@@ -40,6 +41,10 @@ type Router struct {
 
 	// globalChain wraps the whole mux and runs once per request, set on the top-level Router.
 	globalChain []Middleware
+
+	// globalHandler is the mux wrapped in globalChain. Use rebuilds it, so ServeHTTP neither
+	// allocates the chain per request nor reads globalChain while Use may be appending to it.
+	globalHandler atomic.Pointer[http.Handler]
 
 	// routeChain is applied to individual handlers as they are registered, scoped to a Group.
 	routeChain []Middleware
@@ -87,16 +92,15 @@ func (r *Router) HandleFunc(pattern string, handler http.HandlerFunc) {
 	r.Handle(pattern, handler)
 }
 
-// ServeHTTP wraps the response in a ResponseWriter, applies the global middleware chain, and
-// dispatches to the mux. The chain is applied in reverse so the first middleware added runs first.
+// ServeHTTP wraps the response in a ResponseWriter and dispatches it through the global middleware
+// chain that Use has built around the mux.
 func (r *Router) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	var handler http.Handler = r.ServeMux
+	if chain := r.globalHandler.Load(); chain != nil {
+		handler = *chain
+	}
 
 	writer := &ResponseWriter{ResponseWriter: resp, Log: r.Log, Error: r.errorRenderer}
-
-	for _, middleware := range slices.Backward(r.globalChain) {
-		handler = middleware(handler)
-	}
 
 	handler.ServeHTTP(writer, req)
 }
@@ -118,5 +122,18 @@ func (r *Router) Use(middlewares ...Middleware) {
 		r.routeChain = append(r.routeChain, middlewares...)
 	} else {
 		r.globalChain = append(r.globalChain, middlewares...)
+		r.buildGlobalHandler()
 	}
+}
+
+// buildGlobalHandler wraps the mux in the global chain once and publishes the result for
+// ServeHTTP. The chain is applied in reverse so the first middleware added runs first.
+func (r *Router) buildGlobalHandler() {
+	var handler http.Handler = r.ServeMux
+
+	for _, middleware := range slices.Backward(r.globalChain) {
+		handler = middleware(handler)
+	}
+
+	r.globalHandler.Store(&handler)
 }
