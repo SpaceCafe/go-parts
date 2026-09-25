@@ -13,6 +13,16 @@ type RedactedError struct {
 	error
 }
 
+// Redact wraps err in a RedactedError. Its embedded error is unexported, so this is the only way to
+// build one with a cause outside this package. A nil err returns nil.
+func Redact(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &RedactedError{error: err}
+}
+
 // Error returns an empty string so the wrapped detail is never rendered to the client. The original
 // remains reachable through Unwrap for logging.
 func (r *RedactedError) Error() string {
