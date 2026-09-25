@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/spacecafe/go-parts/pkg/log"
@@ -22,17 +23,28 @@ type ResponseWriter struct {
 // Abort logs the failure and writes an error response for code. Server errors (5xx) are logged at
 // error level, and their detail is withheld from the client to avoid leaking internals, whereas
 // client errors (4xx) are logged at info level and their detail is passed through. A Redacted error
-// renders as an empty string, so the error it wraps is logged in its place.
+// renders as an empty string, so the error it wraps is logged in its place. A nil Log or Error
+// falls back to slog.Default and RenderErrorAsText.
 func (r *ResponseWriter) Abort(req *http.Request, code int, err error) {
+	logger := r.Log
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	renderer := r.Error
+	if renderer == nil {
+		renderer = RenderErrorAsText
+	}
+
 	logErr := logError(err)
 	args := []any{"method", req.Method, "path", req.URL.Path, "status", code, "error", logErr}
 
 	if code >= http.StatusInternalServerError {
-		r.Log.Error("httpserver: request failed", args...)
-		r.Error(r.ResponseWriter, req, code, nil)
+		logger.Error("httpserver: request failed", args...)
+		renderer(r.ResponseWriter, req, code, nil)
 	} else {
-		r.Log.Info("httpserver: request failed", args...)
-		r.Error(r.ResponseWriter, req, code, err)
+		logger.Info("httpserver: request failed", args...)
+		renderer(r.ResponseWriter, req, code, err)
 	}
 }
 

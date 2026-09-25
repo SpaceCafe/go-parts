@@ -48,11 +48,13 @@ type Router struct {
 	isSubRouter bool
 }
 
-// NewRouter returns a Router backed by a fresh http.ServeMux and the default logger.
+// NewRouter returns a Router backed by a fresh http.ServeMux, the default logger, and
+// RenderErrorAsText. HTTPServer replaces both with its own on Start.
 func NewRouter() *Router {
 	return &Router{
-		ServeMux: http.NewServeMux(),
-		Log:      slog.Default(),
+		ServeMux:      http.NewServeMux(),
+		Log:           slog.Default(),
+		errorRenderer: RenderErrorAsText,
 	}
 }
 
