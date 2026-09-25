@@ -28,6 +28,9 @@ var (
 	ErrInvalidBasePath = errors.New(
 		"validate: value must be an absolute path without trailing slash",
 	)
+	ErrIncompleteTLS = errors.New(
+		"validate: cert file and key file must be set together",
+	)
 )
 
 // Config defines the essential parameters for serving an http Server.
@@ -38,10 +41,10 @@ type Config struct {
 	// BasePath represents the prefixed path in the URL.
 	BasePath string `json:"basePath" yaml:"basePath"`
 
-	// CertFile represents the path to the certificate file.
+	// CertFile represents the path to the certificate file. Set it together with KeyFile to enable TLS.
 	CertFile string `json:"certFile" yaml:"certFile"`
 
-	// KeyFile represents the path to the key file.
+	// KeyFile represents the path to the key file. Set it together with CertFile to enable TLS.
 	KeyFile string `json:"keyFile" yaml:"keyFile"`
 
 	// IdleTimeout represents the maximum amount of time to wait for the next request when keep-alive is enabled.
@@ -103,5 +106,27 @@ func (r *Config) Validate() error {
 		validate.Validate("port", r.Port, validate.Between(0, math.MaxUint16)),
 		validate.Validate("cert file", errCertFile, validate.NoError),
 		validate.Validate("key file", errKeyFile, validate.NoError),
+		validate.Validate("cert file", r.CertFile, optionalFileRO),
+		validate.Validate("key file", r.KeyFile, optionalFileRO),
+		validateTLSPair(r.CertFile, r.KeyFile),
 	)
+}
+
+// optionalFileRO accepts an empty path and otherwise requires a readable regular file.
+func optionalFileRO(value string) error {
+	if value == "" {
+		return nil
+	}
+
+	return validate.FileRO(value)
+}
+
+// validateTLSPair rejects a config that sets only one of CertFile and KeyFile, which would
+// otherwise silently start the server without TLS.
+func validateTLSPair(certFile, keyFile string) error {
+	if (certFile == "") != (keyFile == "") {
+		return ErrIncompleteTLS
+	}
+
+	return nil
 }
