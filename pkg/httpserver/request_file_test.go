@@ -178,8 +178,9 @@ func TestFile_UnmarshalJSON(t *testing.T) {
 	}{
 		{name: "string value", data: "\t \n \r \"payload\"", wantContent: `payload`},
 		{name: "empty value", data: `""`, wantContent: ``},
-		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrWriteFile},
-		{name: "null value", data: `null`, wantErr: httpserver.ErrWriteFile},
+		{name: "escaped value", data: `"a\/b\u0021\n"`, wantContent: "a/b!\n"},
+		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrInvalidFileValue},
+		{name: "null value", data: `null`, wantErr: httpserver.ErrInvalidFileValue},
 	}
 
 	for _, tt := range tests {
@@ -218,8 +219,9 @@ func TestBase64File_UnmarshalJSON(t *testing.T) {
 	}{
 		{name: "base64 value", data: `"cGF5bG9hZA=="`, wantContent: `payload`},
 		{name: "invalid base64 value", data: `"cGF5bG9hZA="`, wantErr: httpserver.ErrWriteFile},
-		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrWriteFile},
-		{name: "null value", data: `null`, wantErr: httpserver.ErrWriteFile},
+		{name: "base64 with escaped slash", data: `"Pz8\/"`, wantContent: "???"},
+		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrInvalidFileValue},
+		{name: "null value", data: `null`, wantErr: httpserver.ErrInvalidFileValue},
 	}
 
 	for _, tt := range tests {

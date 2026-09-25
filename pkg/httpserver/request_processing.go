@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"reflect"
 
 	"github.com/spacecafe/go-parts/pkg/typeconv"
 	"github.com/spacecafe/go-parts/pkg/validate"
@@ -43,13 +45,34 @@ func GetFormValue[T any](
 	return getFormValue[T](target, key, req.FormValue(key), defaultValue, validators...)
 }
 
-// GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. If `v` implements a
-// Validate error method, it is called after successful decoding and any
-// returned error is propagated to the caller. The body is read without a limit of its own; wrap it
-// with middleware.MaxBodySize and check for ErrRequestTooLarge to answer with 413.
-func GetJSONBody(req *http.Request, target any) error {
-	err := json.NewDecoder(req.Body).Decode(target)
+// GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. Unknown fields and data
+// after the JSON value are rejected. If `v` implements a Validate error method, it is called after
+// successful decoding and any returned error is propagated to the caller. On any error, the
+// temporary files of File and Base64File fields in `v` are removed, because the caller does not
+// get a usable result to clean up. The body is read without a limit of its own; wrap it with
+// middleware.MaxBodySize and check for ErrRequestTooLarge to answer with 413.
+func GetJSONBody(req *http.Request, target any) (err error) {
+	defer func() {
+		if err != nil {
+			cleanupFiles(reflect.ValueOf(target), make(map[uintptr]struct{}))
+		}
+	}()
+
+	dec := json.NewDecoder(req.Body)
+	dec.DisallowUnknownFields()
+
+	err = dec.Decode(target)
 	if err != nil {
+		return wrapBodyError(ErrJSONBodyDecoding, err)
+	}
+
+	// A second value, or anything but whitespace, after the first one is trailing data.
+	_, err = dec.Token()
+	if !errors.Is(err, io.EOF) {
+		if err == nil {
+			return fmt.Errorf("%w: unexpected data after JSON value", ErrJSONBodyDecoding)
+		}
+
 		return wrapBodyError(ErrJSONBodyDecoding, err)
 	}
 
@@ -65,6 +88,57 @@ func GetJSONBody(req *http.Request, target any) error {
 	}
 
 	return nil
+}
+
+// fileType is the type cleanupFiles looks for. Base64File is covered through its embedded File.
+//
+//nolint:gochecknoglobals // Constant reflect.Type, computed once.
+var fileType = reflect.TypeFor[File]()
+
+// cleanupFiles walks value and calls Cleanup on every File it reaches through exported struct
+// fields, pointers, interfaces, slices, arrays and maps. seen guards against pointer cycles.
+func cleanupFiles(value reflect.Value, seen map[uintptr]struct{}) {
+	//nolint:exhaustive // Only these kinds can contain a File; every other kind is a leaf.
+	switch value.Kind() {
+	case reflect.Pointer:
+		if value.IsNil() {
+			return
+		}
+
+		if _, ok := seen[value.Pointer()]; ok {
+			return
+		}
+
+		seen[value.Pointer()] = struct{}{}
+
+		cleanupFiles(value.Elem(), seen)
+	case reflect.Interface:
+		if !value.IsNil() {
+			cleanupFiles(value.Elem(), seen)
+		}
+	case reflect.Struct:
+		if value.Type() == fileType {
+			if file, ok := reflect.TypeAssert[File](value); ok && file.Cleanup != nil {
+				_ = file.Cleanup()
+			}
+
+			return
+		}
+
+		for i := range value.NumField() {
+			if value.Type().Field(i).IsExported() {
+				cleanupFiles(value.Field(i), seen)
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range value.Len() {
+			cleanupFiles(value.Index(i), seen)
+		}
+	case reflect.Map:
+		for iter := value.MapRange(); iter.Next(); {
+			cleanupFiles(iter.Value(), seen)
+		}
+	}
 }
 
 // GetPathValue retrieves and converts a path value from an HTTP request to the specified

@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 var (
 	ErrInvalidFileHeader = errors.New("httpserver: invalid file header")
+	ErrInvalidFileValue  = errors.New("httpserver: file value must be a JSON string")
 	ErrReadFileHeader    = errors.New("httpserver: failed to read file header")
 	ErrTargetDir         = errors.New("httpserver: failed to use target directory")
 	ErrTempDirCreation   = errors.New("httpserver: failed to create temporary directory")
@@ -82,9 +84,11 @@ func (f *File) Move(dir, filename string) (err error) {
 }
 
 func (f *File) UnmarshalJSON(data []byte) error {
-	data, f.Err = extractJSONValue(data)
-	if f.Err != nil {
-		return f.Err
+	data, err := extractJSONValue(data)
+	if err != nil {
+		f.fail(http.StatusBadRequest, err)
+
+		return err
 	}
 
 	f.reader = bytes.NewReader(data)
@@ -132,7 +136,10 @@ func (f *File) create(magicBytes []byte) {
 // fail discards whatever has been written so far and turns the result into a failure carrying code
 // and err.
 func (f *File) fail(code int, err error) {
-	_ = f.Cleanup()
+	// Cleanup is nil on a zero File, which is what json.Unmarshal hands to UnmarshalJSON.
+	if f.Cleanup != nil {
+		_ = f.Cleanup()
+	}
 
 	f.Cleanup = noopCleanup
 	f.Err = err
@@ -185,9 +192,11 @@ type Base64File struct {
 }
 
 func (f *Base64File) UnmarshalJSON(data []byte) error {
-	data, f.Err = extractJSONValue(data)
-	if f.Err != nil {
-		return f.Err
+	data, err := extractJSONValue(data)
+	if err != nil {
+		f.fail(http.StatusBadRequest, err)
+
+		return err
 	}
 
 	f.reader = base64.NewDecoder(base64.StdEncoding, bytes.NewReader(data))
@@ -196,13 +205,17 @@ func (f *Base64File) UnmarshalJSON(data []byte) error {
 	return f.Err
 }
 
+// extractJSONValue decodes a JSON string, including escapes such as \/ or \u0000. Any other JSON
+// value, null included, is rejected with ErrInvalidFileValue.
 func extractJSONValue(data []byte) ([]byte, error) {
-	// Check if the first non-whitespace character is a quote.
-	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
-		return data[1 : len(data)-1], nil
+	var value *string
+
+	err := json.Unmarshal(data, &value)
+	if err != nil || value == nil {
+		return nil, ErrInvalidFileValue
 	}
 
-	return nil, ErrWriteFile
+	return []byte(*value), nil
 }
 
 // noopCleanup is used as File.Cleanup when there is nothing to remove.
