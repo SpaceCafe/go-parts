@@ -3,9 +3,7 @@ package httpserver
 import (
 	"errors"
 	"math"
-	"path"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
@@ -25,9 +23,6 @@ var (
 	_ config.Defaultable = (*Config)(nil)
 	_ config.Validatable = (*Config)(nil)
 
-	ErrInvalidBasePath = errors.New(
-		"validate: value must be an absolute path without trailing slash",
-	)
 	ErrIncompleteTLS = errors.New(
 		"validate: cert file and key file must be set together",
 	)
@@ -37,9 +32,6 @@ var (
 type Config struct {
 	// Host represents network host address.
 	Host string `json:"host" yaml:"host"`
-
-	// BasePath represents the prefixed path in the URL.
-	BasePath string `json:"basePath" yaml:"basePath"`
 
 	// CertFile represents the path to the certificate file. Set it together with KeyFile to enable TLS.
 	CertFile string `json:"certFile" yaml:"certFile"`
@@ -92,13 +84,6 @@ func (r *Config) Validate() error {
 
 	return errors.Join(
 		validate.Validate("host", r.Host, validate.NotEmpty),
-		validate.Validate("base path", r.BasePath, func(value string) error {
-			if value != "" && (!path.IsAbs(value) || strings.HasSuffix(value, "/")) {
-				return ErrInvalidBasePath
-			}
-
-			return nil
-		}),
 		validate.Validate("idle timeout", r.IdleTimeout, validate.Positive),
 		validate.Validate("read timeout", r.ReadTimeout, validate.Positive),
 		validate.Validate("read header timeout", r.ReadHeaderTimeout, validate.Positive),
