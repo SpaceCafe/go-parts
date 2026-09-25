@@ -149,6 +149,15 @@ func TestHTTPServer_Start_InvalidKeyPair(t *testing.T) {
 	require.ErrorIs(t, server.Start(context.Background()), fs.ErrNotExist)
 }
 
+func TestHTTPServer_Stop(t *testing.T) {
+	t.Parallel()
+
+	server := httpserver.New(&httpserver.Config{Port: 8446}, httpserver.WithLogger(&mockLogger{}))
+	require.NoError(t, server.Start(context.Background()))
+
+	require.NoError(t, server.Stop(context.Background()))
+}
+
 type mockLogger struct{}
 
 func (m *mockLogger) Debug(_ string, _ ...any) {}

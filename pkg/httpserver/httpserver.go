@@ -133,7 +133,12 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 func (s *HTTPServer) Stop(ctx context.Context) error {
 	s.Log.Info("httpserver: stopping HTTP server")
 
-	return fmt.Errorf("httpserver: failed to stop HTTP server: %w", s.Server.Shutdown(ctx))
+	err := s.Server.Shutdown(ctx)
+	if err != nil {
+		return fmt.Errorf("httpserver: failed to stop HTTP server: %w", err)
+	}
+
+	return nil
 }
 
 // setupRouter injects the server's logger and error renderer into the handler when it implements
