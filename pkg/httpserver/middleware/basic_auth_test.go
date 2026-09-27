@@ -1,8 +1,11 @@
 package middleware_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/httpserver/middleware"
@@ -217,4 +220,102 @@ func TestBasicAuthConfig_Validate_Authenticators(t *testing.T) {
 			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
+}
+
+// Precomputed bcrypt hashes (cost 4) of "secret-pass" and "valid-token". Tests may not import
+// bcrypt (depguard), so the fixtures are fixed strings.
+const (
+	bcryptSecretPass = "$2a$04$zUJ/Ut6PXVmFMdb3oBADjekubp4nzYc2WPX0gwrzXcQ8u6yRXoy2e" //nolint:gosec // Test fixture.
+	bcryptValidToken = "$2a$04$..WxmjzhhI0w0N61ECRZWOuTkXq/yrev/mRXk6YT61gsKbEOSEr/e" //nolint:gosec // Test fixture.
+)
+
+func TestBasicAuth_SHA256Token(t *testing.T) {
+	t.Parallel()
+
+	digest := sha256.Sum256([]byte("valid-token"))
+
+	cfg := &middleware.BasicAuthConfig{}
+	cfg.SetDefaults()
+	cfg.Tokens = []validate.Secret{validate.Secret("sha256:" + hex.EncodeToString(digest[:]))}
+	cfg.UseTokens = true
+	require.NoError(t, cfg.Validate())
+
+	handler := middleware.BasicAuth(
+		cfg,
+	)(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+
+	for token, wantStatus := range map[string]int{
+		"valid-token": http.StatusOK,
+		"other-token": http.StatusUnauthorized,
+		"sha256:" + hex.EncodeToString(digest[:]): http.StatusUnauthorized,
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+		req.Header.Set("Authorization", "Token "+token)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, wantStatus, rec.Code, "token %q", token)
+	}
+}
+
+func TestBasicAuthConfig_Validate_TokenFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		wantErr error
+		name    string
+		token   validate.Secret
+	}{
+		{name: "plaintext", token: "valid-token"},
+		{name: "sha256 digest", token: "sha256:" + validate.Secret(strings.Repeat("ab", 32))},
+		{
+			name:    "bcrypt hash",
+			token:   bcryptValidToken,
+			wantErr: middleware.ErrBcryptToken,
+		},
+		{
+			name:    "short sha256 digest",
+			token:   "sha256:abcdef",
+			wantErr: middleware.ErrInvalidTokenDigest,
+		},
+		{
+			name:    "non-hex sha256 digest",
+			token:   "sha256:" + validate.Secret(strings.Repeat("zz", 32)),
+			wantErr: middleware.ErrInvalidTokenDigest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &middleware.BasicAuthConfig{}
+			cfg.SetDefaults()
+			cfg.Tokens = []validate.Secret{tt.token}
+
+			err := cfg.Validate()
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestValidatePasswords(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, middleware.ValidatePasswords("secret-pass", "secret-pass"))
+	assert.False(t, middleware.ValidatePasswords("secret-pass", "secret"))
+	assert.False(t, middleware.ValidatePasswords("secret-pass", "secret-pass-longer"))
+	assert.True(t, middleware.ValidatePasswords(bcryptSecretPass, "secret-pass"))
+	assert.False(t, middleware.ValidatePasswords(bcryptSecretPass, "wrong-pass"))
 }
