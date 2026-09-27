@@ -90,7 +90,11 @@ func ParseByteSize(input string) (ByteSize, error) {
 
 	num, err := strconv.ParseFloat(numStr.String(), 64)
 	if err != nil {
-		return 0, fmt.Errorf("%w: cannot parse '%s' as float: %w", ErrInvalidValue, input, err)
+		return 0, fmt.Errorf(
+			"%w: cannot parse byte size number: %w",
+			ErrInvalidValue,
+			numErrCause(err),
+		)
 	}
 
 	if multiplier, ok := byteSuffixes[suffix]; ok {
@@ -98,13 +102,13 @@ func ParseByteSize(input string) (ByteSize, error) {
 
 		// Check for float64 and uint64 overflow.
 		if math.IsInf(resultFloat, 0) || math.IsNaN(resultFloat) || resultFloat > math.MaxUint64 {
-			return 0, fmt.Errorf("%w: value '%s' overflows", ErrInvalidValue, input)
+			return 0, fmt.Errorf("%w: byte size overflows", ErrInvalidValue)
 		}
 
 		return ByteSize(resultFloat), nil
 	}
 
-	return 0, fmt.Errorf("%w: cannot parse '%s' as byte size", ErrInvalidValue, input)
+	return 0, fmt.Errorf("%w: unknown byte size suffix", ErrInvalidValue)
 }
 
 // Int64 returns the size as an int64. It returns math.MaxInt64 if the value overflows.

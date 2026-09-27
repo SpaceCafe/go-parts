@@ -796,3 +796,40 @@ func TestDefault(t *testing.T) {
 	assert.Equal(t, ",", typeconv.Default.SliceSeparator)
 	assert.Equal(t, time.RFC3339, typeconv.Default.TimeLayout)
 }
+
+func TestConvertTo_ErrorsDoNotEchoValue(t *testing.T) {
+	t.Parallel()
+
+	const secret = "hunter2-s3cr3t"
+
+	convert := map[string]func() error{
+		"bool":      convertErr[bool](secret),
+		"int":       convertErr[int](secret),
+		"int8":      convertErr[int8]("99999"),
+		"uint":      convertErr[uint](secret),
+		"float":     convertErr[float64](secret),
+		"duration":  convertErr[time.Duration](secret),
+		"map value": convertErr[map[string]int]("user=" + secret),
+		"byte size": func() error {
+			_, err := typeconv.ParseByteSize(secret)
+
+			return err
+		},
+	}
+
+	for name, run := range convert {
+		err := run()
+		require.ErrorIs(t, err, typeconv.ErrInvalidValue, name)
+		assert.NotContains(t, err.Error(), secret, name)
+		assert.NotContains(t, err.Error(), "99999", name)
+	}
+}
+
+// convertErr returns a func that converts value to T and returns only the error.
+func convertErr[T any](value string) func() error {
+	return func() error {
+		_, err := typeconv.ConvertTo[T](value)
+
+		return err
+	}
+}

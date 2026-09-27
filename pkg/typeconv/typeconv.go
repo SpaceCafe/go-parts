@@ -167,7 +167,7 @@ func (c *Converter) setMap(field reflect.Value, value string) error {
 
 		err = c.setField(mapValue, entry[1])
 		if err != nil {
-			return fmt.Errorf("typeconv: map value '%s': %w", entry[1], err)
+			return fmt.Errorf("typeconv: map value for key '%s': %w", entry[0], err)
 		}
 
 		newMap.SetMapIndex(mapKey, mapValue)
@@ -251,18 +251,18 @@ func setBool(field reflect.Value, value string) error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: cannot parse '%s' as bool", ErrInvalidValue, value)
+	return fmt.Errorf("%w: cannot parse value as bool", ErrInvalidValue)
 }
 
 // setFloat parses value at the field's bit width and rejects results that would overflow it.
 func setFloat(field reflect.Value, value string) error {
 	floatVal, err := strconv.ParseFloat(value, field.Type().Bits())
 	if err != nil {
-		return fmt.Errorf("%w: cannot parse '%s' as float: %w", ErrInvalidValue, value, err)
+		return fmt.Errorf("%w: cannot parse value as float: %w", ErrInvalidValue, numErrCause(err))
 	}
 
 	if field.OverflowFloat(floatVal) {
-		return fmt.Errorf("%w: value '%f' overflows '%s'", ErrInvalidValue, floatVal, field.Type())
+		return fmt.Errorf("%w: value overflows '%s'", ErrInvalidValue, field.Type())
 	}
 
 	field.SetFloat(floatVal)
@@ -275,11 +275,11 @@ func setFloat(field reflect.Value, value string) error {
 func setInt(field reflect.Value, value string) error {
 	intVal, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		return fmt.Errorf("%w: cannot parse '%s' as int: %w", ErrInvalidValue, value, err)
+		return fmt.Errorf("%w: cannot parse value as int: %w", ErrInvalidValue, numErrCause(err))
 	}
 
 	if field.OverflowInt(intVal) {
-		return fmt.Errorf("%w: value '%d' overflows '%s'", ErrInvalidValue, intVal, field.Type())
+		return fmt.Errorf("%w: value overflows '%s'", ErrInvalidValue, field.Type())
 	}
 
 	field.SetInt(intVal)
@@ -292,11 +292,11 @@ func setInt(field reflect.Value, value string) error {
 func setUint(field reflect.Value, value string) error {
 	uintVal, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
-		return fmt.Errorf("%w: cannot parse '%s' as uint: %w", ErrInvalidValue, value, err)
+		return fmt.Errorf("%w: cannot parse value as uint: %w", ErrInvalidValue, numErrCause(err))
 	}
 
 	if field.OverflowUint(uintVal) {
-		return fmt.Errorf("%w: value '%d' overflows '%s'", ErrInvalidValue, uintVal, field.Type())
+		return fmt.Errorf("%w: value overflows '%s'", ErrInvalidValue, field.Type())
 	}
 
 	field.SetUint(uintVal)
@@ -309,7 +309,8 @@ func setUint(field reflect.Value, value string) error {
 func setDuration(field reflect.Value, value string) error {
 	durationVal, err := time.ParseDuration(value)
 	if err != nil {
-		return fmt.Errorf("%w: cannot parse '%s' as duration: %w", ErrInvalidValue, value, err)
+		// The time package quotes the input in its errors, so err is not wrapped.
+		return fmt.Errorf("%w: cannot parse value as duration", ErrInvalidValue)
 	}
 
 	field.SetInt(int64(durationVal))
@@ -321,7 +322,8 @@ func setDuration(field reflect.Value, value string) error {
 func setTime(field reflect.Value, value, layout string) error {
 	timeVal, err := time.Parse(layout, value)
 	if err != nil {
-		return fmt.Errorf("%w: cannot parse '%s' as time: %w", ErrInvalidValue, value, err)
+		// The time package quotes the input in its errors, so err is not wrapped.
+		return fmt.Errorf("%w: cannot parse value as time with layout %q", ErrInvalidValue, layout)
 	}
 
 	field.Set(reflect.ValueOf(timeVal))
@@ -370,4 +372,15 @@ func unquote(value string) string {
 	}
 
 	return value
+}
+
+// numErrCause returns the cause of a *strconv.NumError (strconv.ErrSyntax or strconv.ErrRange)
+// without the input, which NumError.Error includes. Conversion errors end up in config load errors
+// and logs, and the values converted here may be secrets.
+func numErrCause(err error) error {
+	if numErr, ok := errors.AsType[*strconv.NumError](err); ok {
+		return numErr.Err
+	}
+
+	return err
 }
