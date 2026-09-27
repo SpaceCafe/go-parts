@@ -18,6 +18,8 @@ import (
 func TestRunner_Run(t *testing.T) {
 	t.Parallel()
 
+	requireHelperBinaries(t)
+
 	tests := []struct {
 		cmd    *procrun.Command
 		expect func(*testing.T, *procrun.Result, error)
@@ -82,6 +84,8 @@ func TestRunner_Run(t *testing.T) {
 func TestRunner_Cleanup(t *testing.T) {
 	t.Parallel()
 
+	requireHelperBinaries(t)
+
 	tests := []struct {
 		expectErr error
 		result    *procrun.Result
@@ -137,6 +141,8 @@ func TestRunner_Cleanup(t *testing.T) {
 func TestCommand_StdinStdoutStderr(t *testing.T) {
 	t.Parallel()
 
+	requireHelperBinaries(t)
+
 	var stdout, stderr bytes.Buffer
 
 	cmd := &procrun.Command{
@@ -162,6 +168,8 @@ func TestCommand_StdinStdoutStderr(t *testing.T) {
 
 func TestCommand_Timeout(t *testing.T) {
 	t.Parallel()
+
+	requireHelperBinaries(t)
 
 	cmd := &procrun.Command{
 		Path:    "sleep",
