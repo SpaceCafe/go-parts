@@ -10,7 +10,8 @@ import (
 	"github.com/spacecafe/go-parts/pkg/log"
 )
 
-// LoggerOption configures the Logger middleware.
+// LoggerOption configures the Logger middleware. It is named after its middleware rather than a
+// plain Option, because this package holds several middlewares that must not share option types.
 type LoggerOption func(*loggerOptions)
 
 type loggerOptions struct {
