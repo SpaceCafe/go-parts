@@ -61,7 +61,9 @@ type Limits struct {
 
 // Restrictions defines the filesystem and network access granted to a process.
 // Unlike Limits, these are allowlists rather than quotas. They apply to the spawned process and
-// everything it starts.
+// everything it starts. The four path lists are always enforced together, so any path not listed
+// is denied; the default RWDirs of "/" keeps the filesystem unrestricted. The TCP directions are
+// independent: RestrictBindTCP does not affect outgoing connections and vice versa.
 //
 // The target is executed inside the sandbox, so once RWDirs is narrowed from "/", the allowlist
 // must grant read access to the target binary and everything it loads: for a dynamically linked

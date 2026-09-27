@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/landlock-lsm/go-landlock/landlock"
+	llsyscall "github.com/landlock-lsm/go-landlock/landlock/syscall"
 )
 
 // Exit codes follow env(1) and chroot(1), so a caller can tell a failure of this wrapper apart from
@@ -36,16 +37,17 @@ const listSeparator = string(os.PathListSeparator)
 
 // options holds the restrictions and the command parsed from the arguments.
 type options struct {
-	command     []string
-	bindTCP     portList
-	connectTCP  portList
-	roDirs      pathList
-	roFiles     pathList
-	rwDirs      pathList
-	rwFiles     pathList
-	restrictFS  bool
-	restrictNet bool
-	strict      bool
+	command         []string
+	bindTCP         portList
+	connectTCP      portList
+	roDirs          pathList
+	roFiles         pathList
+	rwDirs          pathList
+	rwFiles         pathList
+	restrictFS      bool
+	restrictBind    bool
+	restrictConnect bool
+	strict          bool
 }
 
 // pathList collects the values of a repeatable path flag.
@@ -131,14 +133,45 @@ func applyRestrictions(opts *options) error {
 		}
 	}
 
-	if opts.restrictNet {
-		err := config.RestrictNet(netRules(opts)...)
+	if opts.restrictBind || opts.restrictConnect {
+		netConfig, err := newNetConfig(opts)
+		if err != nil {
+			return err
+		}
+
+		err = netConfig.RestrictNet(netRules(opts)...)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// newNetConfig builds a config that handles only the TCP directions named on the command line.
+// landlock.V9 handles bind and connect for TCP and UDP at once, and Landlock denies every handled
+// right that no rule grants, so -tcp.bind alone would also have denied every outgoing connection.
+func newNetConfig(opts *options) (landlock.Config, error) {
+	var access landlock.AccessNetSet
+
+	if opts.restrictBind {
+		access |= llsyscall.AccessNetBindTCP
+	}
+
+	if opts.restrictConnect {
+		access |= llsyscall.AccessNetConnectTCP
+	}
+
+	config, err := landlock.NewConfig(access)
+	if err != nil {
+		return landlock.Config{}, err
+	}
+
+	if !opts.strict {
+		return config.BestEffort(), nil
+	}
+
+	return *config, nil
 }
 
 // fatalf reports the failure on stderr and exits with the given status.
@@ -217,8 +250,10 @@ func parseFlags(args []string) *options {
 		switch entry.Name {
 		case "ro.dir", "ro.file", "rw.dir", "rw.file":
 			opts.restrictFS = true
-		case "tcp.bind", "tcp.connect":
-			opts.restrictNet = true
+		case "tcp.bind":
+			opts.restrictBind = true
+		case "tcp.connect":
+			opts.restrictConnect = true
 		}
 	})
 
@@ -256,8 +291,10 @@ func usage(flags *flag.FlagSet) {
 	)
 	_, _ = fmt.Fprintf(
 		flags.Output(),
-		"Flags may be repeated or take a %q separated list. A flag that is never given\n"+
-			"stays unrestricted; giving it with an empty value denies it altogether.\n\n",
+		"Flags may be repeated or take a %q separated list. A TCP flag that is never\n"+
+			"given stays unrestricted; giving it with an empty value denies it altogether.\n"+
+			"The path flags act together: giving any of them restricts all filesystem\n"+
+			"access to the listed paths.\n\n",
 		listSeparator,
 	)
 	flags.PrintDefaults()
