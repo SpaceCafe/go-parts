@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -243,5 +245,36 @@ func TestShutdown_ForceExitsOnlyOnTimeout(t *testing.T) {
 
 			assert.Equal(t, tt.wantExit, exits)
 		})
+	}
+}
+
+//nolint:paralleltest // Other tests send SIGTERM to the process, which every instance receives.
+func TestShutdown_Go_ConcurrentWithShutdown(t *testing.T) {
+	for range 50 {
+		obj := shutdown.New(&shutdown.Config{Timeout: time.Second, Force: false})
+
+		var (
+			accepted atomic.Int64
+			finished atomic.Int64
+			starters sync.WaitGroup
+		)
+
+		for range 20 {
+			starters.Go(func() {
+				err := obj.Go(func(ctx context.Context) {
+					<-ctx.Done()
+					finished.Add(1)
+				})
+				if err == nil {
+					accepted.Add(1)
+				}
+			})
+		}
+
+		obj.Shutdown()
+		starters.Wait()
+
+		// Every task that Go accepted must have been waited for by the graceful shutdown.
+		assert.Equal(t, accepted.Load(), finished.Load())
 	}
 }

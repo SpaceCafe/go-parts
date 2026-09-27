@@ -68,6 +68,10 @@ type Shutdown struct {
 
 	// waitGroup is used to synchronize and wait for the completion of multiple goroutines.
 	waitGroup sync.WaitGroup
+
+	// mu serializes adding to waitGroup with cancelling the runtime context. Once the context is
+	// cancelled under mu, no further Add can happen, so Add never races with Wait.
+	mu sync.Mutex
 }
 
 // New creates a new Shutdown instance with the provided configuration.
@@ -127,7 +131,7 @@ func (s *Shutdown) Done() <-chan struct{} {
 // Use this to stop accepting new connections or long-running tasks.
 func (s *Shutdown) Drain() {
 	s.Log.Info("shutdown: initializing drain")
-	s.cancelRuntimeFn()
+	s.cancelRuntime()
 
 	go s.observeShutdown(nil)
 }
@@ -136,18 +140,12 @@ func (s *Shutdown) Drain() {
 // When the task returns, it's removed from the waitGroup.
 // Use this for background tasks that should be tracked for graceful shutdown.
 func (s *Shutdown) Go(task func(context.Context)) error {
-	if s.runtimeCtx.Err() != nil {
-		return ErrContextCancelled
+	err := s.goTracked(func() { task(s.runtimeCtx) })
+	if err != nil {
+		return err
 	}
 
-	s.waitGroup.Add(1)
 	s.Log.Debug("shutdown: starting task")
-
-	go func() {
-		defer s.waitGroup.Done()
-
-		task(s.runtimeCtx)
-	}()
 
 	return nil
 }
@@ -162,16 +160,12 @@ func (s *Shutdown) Shutdown() {
 // A service that is nil or does not implement Trackable is rejected with ErrNotTrackable and is not
 // added to the wait group, so it cannot block shutdown.
 func (s *Shutdown) Track(service any) error {
-	if s.runtimeCtx.Err() != nil {
-		return ErrContextCancelled
-	}
-
 	trackable, ok := service.(Trackable)
 	if !ok {
 		return fmt.Errorf("%w: %T", ErrNotTrackable, service)
 	}
 
-	s.waitGroup.Go(func() {
+	err := s.goTracked(func() {
 		<-s.runtimeCtx.Done()
 
 		err := trackable.Stop(s.shutdownCtx)
@@ -179,8 +173,11 @@ func (s *Shutdown) Track(service any) error {
 			s.Log.Error("shutdown: failed to stop service", "error", err)
 		}
 	})
+	if err != nil {
+		return err
+	}
 
-	err := trackable.Start(s.runtimeCtx)
+	err = trackable.Start(s.runtimeCtx)
 	if err != nil {
 		return fmt.Errorf("shutdown: starting service: %w", err)
 	}
@@ -195,6 +192,30 @@ func (s *Shutdown) Track(service any) error {
 func (s *Shutdown) Wait() {
 	<-s.runtimeCtx.Done()
 	<-s.shutdownCtx.Done()
+}
+
+// cancelRuntime cancels the runtime context while holding mu, see goTracked.
+func (s *Shutdown) cancelRuntime() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.cancelRuntimeFn()
+}
+
+// goTracked runs task in a goroutine tracked by the wait group, unless the runtime context is already
+// cancelled. The check and the Add happen under mu, which cancelRuntime also holds, so a shutdown
+// cannot start waiting between them.
+func (s *Shutdown) goTracked(task func()) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.runtimeCtx.Err() != nil {
+		return ErrContextCancelled
+	}
+
+	s.waitGroup.Go(task)
+
+	return nil
 }
 
 func (s *Shutdown) observeShutdown(callback func()) {
@@ -212,7 +233,7 @@ func (s *Shutdown) observeShutdown(callback func()) {
 // finish and run its deferred functions.
 func (s *Shutdown) shutdown(signaled bool) {
 	s.Log.Info("shutdown: initializing shutdown")
-	s.cancelRuntimeFn()
+	s.cancelRuntime()
 
 	go s.observeShutdown(s.cancelShutdownFn)
 
