@@ -97,9 +97,10 @@ type Restrictions struct {
 	// ports in BindTCP, so an empty list denies listening altogether.
 	RestrictBindTCP bool `json:"restrictBindTCP" yaml:"restrictBindTCP"`
 
-	// Strict makes landlock-restrict fail instead of running the command unrestricted when the
-	// kernel cannot enforce every requested restriction (for example without Landlock support).
-	// It requires LandlockBin, and on platforms without Landlock every Run fails.
+	// Strict makes landlock-restrict fail instead of running the command without a requested kind
+	// of restriction: without Landlock, filesystem rules on a kernel below ABI v1, or TCP rules below
+	// v4. Newer kernels enforce finer rights; a kernel in between enforces what it supports. It
+	// requires LandlockBin, and on platforms without Landlock every Run fails.
 	Strict bool `json:"strict" yaml:"strict"`
 
 	// RestrictConnectTCP gates ConnectTCP. False leaves outgoing connections unrestricted, true
