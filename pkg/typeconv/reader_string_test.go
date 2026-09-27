@@ -3,6 +3,7 @@ package typeconv_test
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -108,4 +109,28 @@ func TestReaderString_UnmarshalText_SetsBytesReader(t *testing.T) {
 	err := got.UnmarshalText([]byte("hello"))
 	require.NoError(t, err)
 	assert.IsType(t, &bytes.Reader{}, got.Reader)
+}
+
+func TestReaderString_MarshalText_Repeatable(t *testing.T) {
+	t.Parallel()
+
+	var value typeconv.ReaderString
+	require.NoError(t, value.UnmarshalText([]byte("hello")))
+
+	for range 2 {
+		got, err := value.MarshalText()
+		require.NoError(t, err)
+		assert.Equal(t, "hello", string(got))
+	}
+
+	// A reader that cannot seek is consumed, as documented.
+	oneShot := typeconv.ReaderString{Reader: io.MultiReader(strings.NewReader("once"))}
+
+	first, err := oneShot.MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "once", string(first))
+
+	second, err := oneShot.MarshalText()
+	require.NoError(t, err)
+	assert.Empty(t, second)
 }
