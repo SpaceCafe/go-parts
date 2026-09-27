@@ -174,3 +174,36 @@ func TestEnvSource_Load_Values(t *testing.T) {
 	assert.Equal(t, "  s3cr3t ", target.Secret)
 	assert.Equal(t, "  keep spaces  ", target.Padded)
 }
+
+//nolint:paralleltest // Uses t.Setenv.
+func TestEnvSource_Load_ReservedNames(t *testing.T) {
+	t.Setenv("HOME", "/home/someone")
+
+	t.Run("field name colliding without prefix", func(t *testing.T) {
+		var target struct{ Home string }
+
+		require.ErrorIs(t, config.EnvSource{}.Load(&target), config.ErrReservedEnvName)
+	})
+
+	t.Run("explicit env tag is allowed", func(t *testing.T) {
+		var target struct {
+			Dir string `env:"HOME"`
+		}
+
+		require.NoError(t, config.EnvSource{}.Load(&target))
+		assert.Equal(t, "/home/someone", target.Dir)
+	})
+
+	t.Run("prefix avoids the collision", func(t *testing.T) {
+		var target struct{ Home string }
+
+		require.NoError(t, config.EnvSource{Prefix: "APP"}.Load(&target))
+		assert.Empty(t, target.Home)
+	})
+
+	t.Run("nested field is prefixed by its parent", func(t *testing.T) {
+		var target struct{ Server struct{ Home string } }
+
+		require.NoError(t, config.EnvSource{}.Load(&target))
+	})
+}

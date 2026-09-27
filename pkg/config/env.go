@@ -16,10 +16,29 @@ import (
 var (
 	_ Source = (*EnvSource)(nil)
 
-	ErrConversion = errors.New("config: failed to convert environment variable to field type")
+	ErrConversion      = errors.New("config: failed to convert environment variable to field type")
+	ErrReservedEnvName = errors.New(
+		"config: field maps to a reserved environment variable, set a prefix or an env tag",
+	)
+
+	// ReservedEnvNames lists common system variables that an unprefixed field name must not map
+	// onto. It is not exhaustive: it covers names that realistically collide with config fields.
+	//
+	//nolint:gochecknoglobals // Read-only set of names.
+	ReservedEnvNames = map[string]struct{}{
+		"HOME": {}, "PATH": {}, "USER": {}, "USERNAME": {}, "LOGNAME": {}, "SHELL": {},
+		"HOST": {}, "HOSTNAME": {}, "PWD": {}, "OLDPWD": {}, "LANG": {}, "LANGUAGE": {},
+		"LC_ALL": {}, "TERM": {}, "TMPDIR": {}, "TEMP": {}, "TMP": {}, "TZ": {},
+		"DISPLAY": {}, "EDITOR": {}, "PAGER": {}, "MAIL": {}, "SHLVL": {}, "UID": {},
+		"GID": {}, "USERPROFILE": {}, "APPDATA": {}, "COMPUTERNAME": {}, "SYSTEMROOT": {},
+		"OS": {},
+	}
 )
 
-// EnvSource loads configuration from environment variables.
+// EnvSource loads configuration from environment variables. Prefix may be empty, but then top-level
+// fields map onto unprefixed names, so a field named Home or Path would read HOME or PATH. With an
+// empty prefix, a field name that derives one of the ReservedEnvNames is therefore rejected with
+// ErrReservedEnvName. An explicit env tag is taken as deliberate and is not checked.
 type EnvSource struct {
 	names  *[]string
 	Prefix string
@@ -117,14 +136,34 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 			continue
 		}
 
+		err := checkReservedEnvName(prefix, envTag, fieldType.Name, envName)
+		if err != nil {
+			return err
+		}
+
 		if s.names != nil {
 			*s.names = append(*s.names, envName)
 		}
 
-		err := loadField(field, envName)
+		err = loadField(field, envName)
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// checkReservedEnvName rejects an envName that is one of the ReservedEnvNames when it was derived
+// from the field name without a prefix. Prefixed names cannot collide, and an explicit env tag is
+// taken as deliberate. It is only called for leaf fields; a struct field just contributes a prefix.
+func checkReservedEnvName(prefix, envTag, fieldName, envName string) error {
+	if prefix != "" || envTag != "" {
+		return nil
+	}
+
+	if _, reserved := ReservedEnvNames[envName]; reserved {
+		return fmt.Errorf("%w: %s -> %s", ErrReservedEnvName, fieldName, envName)
 	}
 
 	return nil

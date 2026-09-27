@@ -51,6 +51,9 @@ type pointerDefaultable[T any] interface {
 //
 // Both flags are also registered on flag.CommandLine unless already defined, so an application that
 // calls flag.Parse itself (before or after AutoLoad) accepts them. AutoLoad never calls flag.Parse.
+//
+// An empty envPrefix is allowed, but fields whose derived names collide with common system
+// variables are rejected, see EnvSource.
 func AutoLoad(target Validatable, name, envPrefix string) error {
 	registerAutoLoadFlags()
 
