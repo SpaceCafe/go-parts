@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/validate"
@@ -738,17 +737,6 @@ func mkDir(t *testing.T, perm fs.FileMode) string {
 	t.Cleanup(func() {
 		_ = os.Chmod(path, 0o700)
 	})
-
-	return path
-}
-
-// mkFIFO creates a named pipe, the cheapest entry that exists and is neither a directory nor a
-// regular file.
-func mkFIFO(t *testing.T) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "fifo")
-	require.NoError(t, syscall.Mkfifo(path, 0o600))
 
 	return path
 }
