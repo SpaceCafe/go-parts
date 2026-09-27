@@ -86,6 +86,10 @@ func TestFilename(t *testing.T) {
 		{name: "parent traversal", value: "../etc", wantErr: validate.ErrAllowedSymbols},
 		{name: "empty", value: "", wantErr: validate.ErrAllowedSymbols},
 		{name: "space", value: "my file", wantErr: validate.ErrAllowedSymbols},
+		{name: "current directory", value: ".", wantErr: validate.ErrInvalidFilename},
+		{name: "parent directory", value: "..", wantErr: validate.ErrInvalidFilename},
+		{name: "leading dash", value: "-rf", wantErr: validate.ErrInvalidFilename},
+		{name: "inner dash and dots", value: "a-b..c", wantErr: nil},
 	}
 
 	for _, tt := range tests {

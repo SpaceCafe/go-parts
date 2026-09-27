@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 )
 
 var (
-	ErrAllowedSymbols = errors.New("validate: value must contain only allowed symbols")
-	ErrAllowedValues  = errors.New("validate: value must be one of allowed values")
+	ErrAllowedSymbols  = errors.New("validate: value must contain only allowed symbols")
+	ErrAllowedValues   = errors.New("validate: value must be one of allowed values")
+	ErrInvalidFilename = errors.New(
+		`validate: filename must not be "." or ".." or start with "-"`,
+	)
 
 	filenameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_.]+$`)
 )
@@ -38,10 +42,19 @@ func AllowedValues[T comparable](list []T) func(T) error {
 	}
 }
 
-// Filename validates the input string against a predefined regular expression for allowed filename characters.
+// Filename validates that value is a single, safe filename: only letters, digits, "-", "_" and ".".
+// It rejects "." and "..", which would refer to the current or parent directory when joined into a
+// path, and a leading "-", which a command-line tool would parse as an option. Names starting with
+// "." (such as ".env") are allowed.
 func Filename[T ~string](value T) error {
-	if !filenameRegex.MatchString(string(value)) {
+	name := string(value)
+
+	if !filenameRegex.MatchString(name) {
 		return fmt.Errorf("%w %s", ErrAllowedSymbols, filenameRegex.String())
+	}
+
+	if name == "." || name == ".." || strings.HasPrefix(name, "-") {
+		return fmt.Errorf("%w: %q", ErrInvalidFilename, name)
 	}
 
 	return nil
