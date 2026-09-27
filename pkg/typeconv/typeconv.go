@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var (
@@ -219,13 +220,14 @@ func parseMapEntries(input, kvSep string) ([][2]string, error) {
 	tokens := splitUnquoted(input)
 	entries := make([][2]string, 0, len(tokens))
 
-	for _, token := range tokens {
+	for index, token := range tokens {
 		key, val, found := strings.Cut(token, kvSep)
 		if !found {
+			// Name the entry by position: the entry itself may hold a secret value.
 			return nil, fmt.Errorf(
-				"%w: map entry '%s' missing '%s' separator",
+				"%w: map entry %d missing '%s' separator",
 				ErrInvalidValue,
-				token,
+				index,
 				kvSep,
 			)
 		}
@@ -331,8 +333,9 @@ func setTime(field reflect.Value, value, layout string) error {
 	return nil
 }
 
-// splitUnquoted splits a string on unquoted whitespace.
-// Characters inside double quotes are treated as part of the current token.
+// splitUnquoted splits a string on unquoted whitespace (any unicode.IsSpace rune: spaces, tabs,
+// newlines). Characters inside double quotes are treated as part of the current token. There is no
+// escape for a literal double quote, so a value cannot contain one.
 func splitUnquoted(value string) []string {
 	var (
 		tokens []string
@@ -340,21 +343,19 @@ func splitUnquoted(value string) []string {
 		inQuot bool
 	)
 
-	for i := range len(value) {
-		char := value[i]
-
+	for _, char := range value {
 		switch {
 		case char == '"':
 			inQuot = !inQuot
 
-			token.WriteByte(char)
-		case char == ' ' && !inQuot:
+			token.WriteRune(char)
+		case unicode.IsSpace(char) && !inQuot:
 			if token.Len() > 0 {
 				tokens = append(tokens, token.String())
 				token.Reset()
 			}
 		default:
-			token.WriteByte(char)
+			token.WriteRune(char)
 		}
 	}
 

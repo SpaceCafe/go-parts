@@ -833,3 +833,16 @@ func convertErr[T any](value string) func() error {
 		return err
 	}
 }
+
+func TestConvertTo_MapWhitespace(t *testing.T) {
+	t.Parallel()
+
+	got, err := typeconv.ConvertTo[map[string]string]("a=1\tb=2\nc=\"x y\"\r\n d=4")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"a": "1", "b": "2", "c": "x y", "d": "4"}, got)
+
+	_, err = typeconv.ConvertTo[map[string]string]("alice=ok bob:hunter2")
+	require.ErrorIs(t, err, typeconv.ErrInvalidValue)
+	assert.NotContains(t, err.Error(), "hunter2")
+	assert.Contains(t, err.Error(), "map entry 1")
+}
