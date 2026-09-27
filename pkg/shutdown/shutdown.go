@@ -94,8 +94,8 @@ func New(cfg *Config) *Shutdown {
 		signalCh:         make(chan os.Signal, 1),
 	}
 
-	// Listen to interrupt, termination, and user signals.
-	signal.Notify(obj.signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1)
+	// Listen to interrupt, termination, and (where available) user signals.
+	notifySignals(obj.signalCh)
 
 	go obj.handleSignals()
 
@@ -215,7 +215,7 @@ func (s *Shutdown) handleSignals() {
 	for {
 		select {
 		case sig := <-s.signalCh:
-			if sig == syscall.SIGUSR1 {
+			if isDrainSignal(sig) {
 				s.Drain()
 
 				continue
