@@ -170,3 +170,42 @@ func TestResponseWriter_Hijack(t *testing.T) {
 		require.ErrorIs(t, err, http.ErrNotSupported)
 	})
 }
+
+func TestAbort_PlainResponseWriter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		wantBody string
+		code     int
+	}{
+		{
+			name:     "client error passes detail through",
+			code:     http.StatusBadRequest,
+			wantBody: "disk full\n",
+		},
+		{
+			name:     "server error hides detail from client",
+			code:     http.StatusInternalServerError,
+			wantBody: "Internal Server Error\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+
+			httpserver.Abort(
+				rec,
+				httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+				tt.code,
+				errCause,
+			)
+
+			assert.Equal(t, tt.code, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+		})
+	}
+}

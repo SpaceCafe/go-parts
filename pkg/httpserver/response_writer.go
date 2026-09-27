@@ -90,12 +90,14 @@ func (r *ResponseWriter) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
+// Abort terminates the request through ResponseWriter.Abort. When resp is not a ResponseWriter (no
+// Router wraps the request), it uses a zero-value ResponseWriter, so the error is still logged and
+// server error details (5xx) are still withheld from the client.
 func Abort(resp http.ResponseWriter, req *http.Request, code int, err error) {
-	if resp, ok := resp.(*ResponseWriter); ok {
-		resp.Abort(req, code, err)
-
-		return
+	writer, ok := resp.(*ResponseWriter)
+	if !ok {
+		writer = &ResponseWriter{ResponseWriter: resp}
 	}
 
-	RenderErrorAsText(resp, req, code, err)
+	writer.Abort(req, code, err)
 }
