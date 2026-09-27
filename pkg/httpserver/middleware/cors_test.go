@@ -166,3 +166,87 @@ func TestCORS(t *testing.T) {
 		})
 	}
 }
+
+func TestCORS_Vary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		origins  []string
+		method   string
+		origin   string
+		wantVary []string
+	}{
+		{
+			name:     "allowed origin",
+			origins:  []string{"https://example.com"},
+			method:   http.MethodGet,
+			origin:   "https://example.com",
+			wantVary: []string{"Origin"},
+		},
+		{
+			name:     "disallowed origin",
+			origins:  []string{"https://example.com"},
+			method:   http.MethodGet,
+			origin:   "https://other.com",
+			wantVary: []string{"Origin"},
+		},
+		{
+			name:     "no origin",
+			origins:  []string{"https://example.com"},
+			method:   http.MethodGet,
+			wantVary: []string{"Origin"},
+		},
+		{
+			name:     "wildcard origin",
+			origins:  []string{"*"},
+			method:   http.MethodGet,
+			origin:   "https://example.com",
+			wantVary: nil,
+		},
+		{
+			name:    "preflight",
+			origins: []string{"https://example.com"},
+			method:  http.MethodOptions,
+			origin:  "https://example.com",
+			wantVary: []string{
+				"Origin",
+				"Access-Control-Request-Method",
+				"Access-Control-Request-Headers",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &middleware.CORSConfig{}
+			cfg.SetDefaults()
+			cfg.AllowedOrigins = tt.origins
+
+			handler := middleware.CORS(
+				cfg,
+			)(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				}),
+			)
+
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				tt.method,
+				"http://localhost",
+				http.NoBody,
+			)
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantVary, rec.Header().Values("Vary"))
+		})
+	}
+}

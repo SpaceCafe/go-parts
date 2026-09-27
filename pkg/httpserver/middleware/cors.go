@@ -131,6 +131,8 @@ func CORS(cfg *CORSConfig) httpserver.Middleware {
 			origin := req.Header.Get("Origin")
 			allowOrigin := getAllowedOrigin(origin, cfg.AllowedOrigins, allowAllOrigins)
 
+			setVaryHeaders(resp, req, allowAllOrigins)
+
 			setCORSHeaders(resp, allowOrigin, cfg.AllowCredentials, exposeHeaders)
 
 			if req.Method == http.MethodOptions {
@@ -141,6 +143,21 @@ func CORS(cfg *CORSConfig) httpserver.Middleware {
 
 			next.ServeHTTP(resp, req)
 		})
+	}
+}
+
+// setVaryHeaders tells caches which request headers the CORS response depends on. Unless every
+// origin is allowed, the response differs per Origin, so a shared cache must not serve one origin's
+// response to another. An OPTIONS response also depends on whether the request is a preflight.
+// Vary is added even when no CORS headers are written, because that absence is origin-specific too.
+func setVaryHeaders(resp http.ResponseWriter, req *http.Request, allowAllOrigins bool) {
+	if !allowAllOrigins {
+		resp.Header().Add("Vary", "Origin")
+	}
+
+	if req.Method == http.MethodOptions {
+		resp.Header().Add("Vary", "Access-Control-Request-Method")
+		resp.Header().Add("Vary", "Access-Control-Request-Headers")
 	}
 }
 
