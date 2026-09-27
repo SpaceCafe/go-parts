@@ -136,3 +136,22 @@ func TestCopyFile_Permissions(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	})
 }
+
+func TestCopyFile_SameFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "data")
+	require.NoError(t, os.WriteFile(src, []byte("keep me"), 0o600))
+
+	link := filepath.Join(dir, "link")
+	require.NoError(t, os.Link(src, link))
+
+	for _, dest := range []string{src, link, filepath.Join(dir, ".", "data")} {
+		require.ErrorIs(t, xutil.CopyFile(src, dest), xutil.ErrSameFile, dest)
+	}
+
+	content, err := os.ReadFile(src)
+	require.NoError(t, err)
+	assert.Equal(t, "keep me", string(content))
+}
