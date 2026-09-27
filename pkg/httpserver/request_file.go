@@ -47,10 +47,6 @@ func GetFileFromBody(req *http.Request, magicBytes []byte) *File {
 	file := &File{Cleanup: noopCleanup, reader: req.Body}
 	file.create(magicBytes)
 
-	if file.Err != nil {
-		return file
-	}
-
 	return file
 }
 
