@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -139,7 +140,10 @@ func prlimitArgs(cfg *Config) []string {
 	)
 
 	if cfg.Limits.CPU > 0 {
-		args = append(args, "--cpu="+strconv.FormatFloat(cfg.Limits.CPU.Seconds(), 'f', 0, 64))
+		// RLIMIT_CPU counts whole seconds. Round down as documented, but never to 0, which would
+		// kill the process immediately.
+		seconds := max(1, int64(cfg.Limits.CPU/time.Second))
+		args = append(args, "--cpu="+strconv.FormatInt(seconds, 10))
 	}
 
 	if cfg.Limits.Memory > 0 {

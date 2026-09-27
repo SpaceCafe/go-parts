@@ -23,7 +23,7 @@ var ErrStrictWithoutLandlock = errors.New("procrun: strict mode requires a landl
 // All fields map to POSIX resource limits set via prlimit(2) on the spawned process.
 type Limits struct {
 	// CPU is the maximum CPU time a single process may consume (RLIMIT_CPU), counting user and
-	// system time together. The kernel rounds it down to whole seconds.
+	// system time together. It is rounded down to whole seconds, with a minimum of one second.
 	CPU time.Duration `json:"cpu" yaml:"cpu"`
 
 	// Memory is the maximum virtual address space of a single process in bytes (RLIMIT_AS). This
