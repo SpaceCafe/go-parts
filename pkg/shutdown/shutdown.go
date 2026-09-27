@@ -97,18 +97,7 @@ func New(cfg *Config) *Shutdown {
 	// Listen to interrupt, termination, and user signals.
 	signal.Notify(obj.signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1)
 
-	go func() {
-		defer obj.shutdown(true)
-
-		for {
-			sig := <-obj.signalCh
-			if sig == syscall.SIGUSR1 {
-				obj.Drain()
-			} else {
-				break
-			}
-		}
-	}()
+	go obj.handleSignals()
 
 	return obj
 }
@@ -216,6 +205,32 @@ func (s *Shutdown) goTracked(task func()) error {
 	s.waitGroup.Go(task)
 
 	return nil
+}
+
+// handleSignals drains on SIGUSR1 and shuts down on the first interrupt or termination signal. It
+// then stops receiving signals, which restores their default behavior: a second Ctrl+C during a
+// hung shutdown terminates the process. It also stops once a programmatic shutdown completes, so
+// neither the goroutine nor the signal registration outlives the instance.
+func (s *Shutdown) handleSignals() {
+	for {
+		select {
+		case sig := <-s.signalCh:
+			if sig == syscall.SIGUSR1 {
+				s.Drain()
+
+				continue
+			}
+
+			signal.Stop(s.signalCh)
+			s.shutdown(true)
+
+			return
+		case <-s.shutdownCtx.Done():
+			signal.Stop(s.signalCh)
+
+			return
+		}
+	}
 }
 
 func (s *Shutdown) observeShutdown(callback func()) {
