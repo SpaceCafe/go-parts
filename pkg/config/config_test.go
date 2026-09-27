@@ -305,3 +305,14 @@ func TestLoad_Defaults(t *testing.T) {
 		assert.EqualExportedValues(t, MockConfig{Name: "default-app", Port: 9000}, *target)
 	})
 }
+
+func TestLoad_ValidationErrorKeepsChain(t *testing.T) {
+	t.Parallel()
+
+	target := config.New[MockConfig]()
+	target.Port = 0
+
+	err := config.Load(target)
+	require.ErrorIs(t, err, config.ErrValidation)
+	require.ErrorIs(t, err, errInvalidPort)
+}

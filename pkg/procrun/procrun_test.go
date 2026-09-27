@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -372,4 +373,19 @@ func TestConfig_Validate_PathListSeparator(t *testing.T) {
 	cfg.Restrictions.RODirs = []string{"/data/a" + string(os.PathListSeparator) + "b"}
 
 	require.ErrorIs(t, cfg.Validate(), procrun.ErrPathListSeparator)
+}
+
+func TestRunner_Run_ErrorChain(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	require.NoError(t, cfg.Validate())
+
+	_, err := procrun.New(cfg).Run(t.Context(), &procrun.Command{Path: "/nonexistent/binary"})
+
+	require.ErrorIs(t, err, procrun.ErrProcessStart)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }

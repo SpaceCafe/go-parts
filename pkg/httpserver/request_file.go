@@ -69,7 +69,7 @@ func (f *File) Move(dir, filename string) (err error) {
 	} else {
 		dir, err = filepath.Abs(dir)
 		if err != nil {
-			return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
+			return fmt.Errorf("%w: %w", ErrTargetDir, err)
 		}
 	}
 
@@ -77,7 +77,7 @@ func (f *File) Move(dir, filename string) (err error) {
 
 	err = moveFile(f.Path, targetPath)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrTargetDir, err.Error())
+		return fmt.Errorf("%w: %w", ErrTargetDir, err)
 	}
 
 	// Don't clean up if new dir is equal to or a subdirectory of old dir. Once the file has left the
@@ -138,7 +138,7 @@ func (f *File) create(magicBytes []byte) {
 	if err != nil {
 		f.fail(
 			http.StatusInternalServerError,
-			fmt.Errorf("%w: %s", ErrTempDirCreation, err.Error()),
+			fmt.Errorf("%w: %w", ErrTempDirCreation, err),
 		)
 
 		return
@@ -188,7 +188,7 @@ func (f *File) verifyMagic(magicBytes []byte) error {
 
 	_, err := io.ReadFull(f.reader, f.magicBytes)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrReadFileHeader, err.Error())
+		return fmt.Errorf("%w: %w", ErrReadFileHeader, err)
 	}
 
 	if !bytes.Equal(f.magicBytes, magicBytes) {
@@ -202,7 +202,7 @@ func (f *File) verifyMagic(magicBytes []byte) error {
 func (f *File) write() error {
 	file, err := os.Create(f.Path) // #nosec G304
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrTempFileCreation, err.Error())
+		return fmt.Errorf("%w: %w", ErrTempFileCreation, err)
 	}
 
 	defer func() { _ = file.Close() }()

@@ -169,7 +169,7 @@ func Load(target Validatable, sources ...Source) error {
 
 	err = target.Validate()
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrValidation, err.Error())
+		return fmt.Errorf("%w: %w", ErrValidation, err)
 	}
 
 	return nil

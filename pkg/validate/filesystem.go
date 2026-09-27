@@ -219,7 +219,7 @@ func stat[T ~string](value T) (fs.FileInfo, error) {
 			return nil, ErrPathNotExist
 		}
 
-		return nil, fmt.Errorf("%w: %s", ErrPathNotExist, err.Error())
+		return nil, fmt.Errorf("%w: %w", ErrPathNotExist, err)
 	}
 
 	return info, nil

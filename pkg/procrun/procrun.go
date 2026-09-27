@@ -103,7 +103,7 @@ func (r *Runner) Cleanup(result *Result) error {
 
 	err := os.RemoveAll(result.WorkDir)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
+		return fmt.Errorf("%w: %w", ErrCleanup, err)
 	}
 
 	return nil
@@ -145,14 +145,14 @@ func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
 
 	err = applyProcessAttributes(r, execCmd)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrProcessStart, err.Error())
+		return nil, fmt.Errorf("%w: %w", ErrProcessStart, err)
 	}
 
 	err = execCmd.Start()
 	if err != nil {
 		result.Error = err
 
-		return result, fmt.Errorf("%w: %s", ErrProcessStart, err.Error())
+		return result, fmt.Errorf("%w: %w", ErrProcessStart, err)
 	}
 
 	return r.awaitResult(cmdCtx, execCmd, result)
@@ -189,7 +189,7 @@ func (r *Runner) awaitResult(
 		result.Error = err
 		result.ExitCode = 1
 
-		return result, fmt.Errorf("%w: %s", ErrProcessTermination, err.Error())
+		return result, fmt.Errorf("%w: %w", ErrProcessTermination, err)
 	}
 
 	result.ExitCode = exitCode(state)
@@ -206,12 +206,12 @@ func (r *Runner) awaitResult(
 	if ctxErr != nil && wasKilled(state) {
 		result.Error = ctxErr
 
-		return result, fmt.Errorf("%w: %s", ErrProcessTermination, ctxErr.Error())
+		return result, fmt.Errorf("%w: %w", ErrProcessTermination, ctxErr)
 	}
 
 	result.Error = err
 
-	return result, fmt.Errorf("%w: %s", ErrProcessTermination, err.Error())
+	return result, fmt.Errorf("%w: %w", ErrProcessTermination, err)
 }
 
 // commandEnv returns the environment for cmd. An explicit Command.Env is used as is (an empty slice
@@ -271,7 +271,7 @@ func (r *Runner) setupWorkDir(cmd *Command) (*Result, error) {
 
 	workDir, err := os.MkdirTemp("", cmd.TempDirPattern)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrWorkDirCreation, err.Error())
+		return nil, fmt.Errorf("%w: %w", ErrWorkDirCreation, err)
 	}
 
 	result.WorkDir = workDir

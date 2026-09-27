@@ -25,7 +25,7 @@ func wrapBodyError(fallback, err error) error {
 		return fmt.Errorf("%w: limit is %d bytes", ErrRequestTooLarge, maxBytesErr.Limit)
 	}
 
-	return fmt.Errorf("%w: %s", fallback, err.Error())
+	return fmt.Errorf("%w: %w", fallback, err)
 }
 
 // GetFormValue retrieves and converts a form value from an HTTP request to the specified type. If
