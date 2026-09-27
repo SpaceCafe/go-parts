@@ -19,6 +19,7 @@ var (
 	ErrConfigNotFound = errors.New("config: config not found")
 	ErrInvalidConfig  = errors.New("config: invalid config")
 	ErrValidation     = errors.New("config: validation failed")
+	ErrTemplateCreate = errors.New("config: cannot create template file")
 )
 
 // Defaultable allows a configuration struct to set its own default values.
@@ -91,6 +92,8 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 }
 
 // GenerateTemplate writes a configuration template for the target and writes it to the specified file.
+// It never overwrites an existing file, so passing the path of a live config cannot replace it with
+// defaults. If writing the template fails, the partial file is removed.
 func GenerateTemplate(target Validatable, filename, envPrefix string) (err error) {
 	err = validatePointerToStruct(target)
 	if err != nil {
@@ -101,32 +104,36 @@ func GenerateTemplate(target Validatable, filename, envPrefix string) (err error
 		filename = "config.tmpl.json"
 	}
 
-	// Apply defaults if the target implements Defaultable
-	if defaultable, ok := target.(Defaultable); ok {
-		defaultable.SetDefaults()
-	}
-
-	file, err := os.OpenFile(
-		filepath.Clean(filename),
-		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-		defaultFilePermission,
-	)
-	if err != nil {
-		return err
-	}
-	defer func() { err = file.Close() }()
-
+	// Pick the source before touching the file, so an unsupported suffix leaves nothing behind.
 	var source Source
 
 	if strings.HasSuffix(filename, ".env") {
 		source = &EnvSource{Prefix: envPrefix}
 	} else {
 		source, err = sourceFromSuffix(filename)
+		if err != nil {
+			return err
+		}
 	}
 
-	if err != nil {
-		return err
+	// Apply defaults if the target implements Defaultable
+	if defaultable, ok := target.(Defaultable); ok {
+		defaultable.SetDefaults()
 	}
+
+	filename = filepath.Clean(filename)
+
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_EXCL, defaultFilePermission)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrTemplateCreate, err)
+	}
+
+	defer func() {
+		err = errors.Join(err, file.Close())
+		if err != nil {
+			_ = os.Remove(filename)
+		}
+	}()
 
 	return source.GenerateTemplate(target, file)
 }

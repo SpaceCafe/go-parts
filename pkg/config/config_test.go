@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -226,4 +227,52 @@ func equalJSON(t *testing.T, expected, actual string) bool {
 	t.Helper()
 
 	return assert.JSONEq(t, expected, actual)
+}
+
+// unencodableConfig cannot be encoded as JSON, which makes the template writer fail.
+type unencodableConfig struct {
+	Callback func() `json:"callback"`
+}
+
+func (*unencodableConfig) Validate() error { return nil }
+
+func TestGenerateTemplate_Errors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("existing file is not overwritten", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), "prod.json")
+		require.NoError(t, os.WriteFile(filePath, []byte(`{"name":"prod"}`), 0o600))
+
+		err := config.GenerateTemplate(&MockConfig{}, filePath, "")
+		require.ErrorIs(t, err, config.ErrTemplateCreate)
+		require.ErrorIs(t, err, fs.ErrExist)
+
+		content, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"name":"prod"}`, string(content))
+	})
+
+	t.Run("unsupported suffix leaves no file", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), "config.toml")
+
+		require.ErrorIs(
+			t,
+			config.GenerateTemplate(&MockConfig{}, filePath, ""),
+			config.ErrInvalidConfig,
+		)
+		assert.NoFileExists(t, filePath)
+	})
+
+	t.Run("encoding error is returned and file removed", func(t *testing.T) {
+		t.Parallel()
+
+		filePath := filepath.Join(t.TempDir(), "config.json")
+
+		require.Error(t, config.GenerateTemplate(&unencodableConfig{}, filePath, ""))
+		assert.NoFileExists(t, filePath)
+	})
 }
