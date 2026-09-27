@@ -55,13 +55,13 @@ func TestShutdown_Track(t *testing.T) {
 			name:    "not trackable",
 			cfg:     &shutdown.Config{Timeout: time.Second * 2, Force: true},
 			arg:     nil,
-			wantErr: assert.NoError,
+			wantErr: errorIsNotTrackable,
 		},
 		{
 			name:    "not trackable struct",
 			cfg:     &shutdown.Config{Timeout: time.Second * 2, Force: true},
 			arg:     &struct{}{},
-			wantErr: assert.NoError,
+			wantErr: errorIsNotTrackable,
 		},
 	}
 	for _, tt := range tests {
@@ -162,4 +162,23 @@ func sendSignal(t *testing.T, signal os.Signal) {
 
 	err = p.Signal(signal)
 	require.NoError(t, err)
+}
+
+// errorIsNotTrackable asserts that err wraps shutdown.ErrNotTrackable.
+func errorIsNotTrackable(t assert.TestingT, err error, msgAndArgs ...any) bool {
+	return assert.ErrorIs(t, err, shutdown.ErrNotTrackable, msgAndArgs...)
+}
+
+//nolint:paralleltest // Other tests send SIGTERM to the process, which every instance receives.
+func TestShutdown_Track_RejectedServiceDoesNotBlockShutdown(t *testing.T) {
+	obj := shutdown.New(&shutdown.Config{Timeout: 5 * time.Second, Force: false})
+
+	require.ErrorIs(t, obj.Track(nil), shutdown.ErrNotTrackable)
+	require.ErrorIs(t, obj.Track(&struct{}{}), shutdown.ErrNotTrackable)
+
+	begin := time.Now()
+
+	obj.Shutdown()
+
+	assert.Less(t, time.Since(begin), time.Second, "shutdown must not wait for the timeout")
 }

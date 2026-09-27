@@ -20,7 +20,10 @@ const (
 	ExitCodeSigTerm = 128 + int(syscall.SIGTERM) // equals 143
 )
 
-var ErrContextCancelled = errors.New("shutdown: context cancelled")
+var (
+	ErrContextCancelled = errors.New("shutdown: context cancelled")
+	ErrNotTrackable     = errors.New("shutdown: service does not implement Trackable")
+)
 
 // Trackable represents an interface for managing the lifecycle of a trackable goroutine.
 type Trackable interface {
@@ -169,36 +172,33 @@ func (s *Shutdown) Shutdown() {
 }
 
 // Track initiates a trackable entity, adding it to the wait group and invoking its Start method with the given context.
+// A service that is nil or does not implement Trackable is rejected with ErrNotTrackable and is not
+// added to the wait group, so it cannot block shutdown.
 func (s *Shutdown) Track(service any) error {
 	if s.runtimeCtx.Err() != nil {
 		return ErrContextCancelled
 	}
 
-	s.waitGroup.Add(1)
-
-	if service == nil {
-		return nil
+	trackable, ok := service.(Trackable)
+	if !ok {
+		return fmt.Errorf("%w: %T", ErrNotTrackable, service)
 	}
 
-	if trackable, ok := service.(Trackable); ok {
-		go func() {
-			defer s.waitGroup.Done()
+	s.waitGroup.Go(func() {
+		<-s.runtimeCtx.Done()
 
-			<-s.runtimeCtx.Done()
-
-			err := trackable.Stop(s.shutdownCtx)
-			if err != nil {
-				s.Log.Error("shutdown: failed to stop service", "error", err)
-			}
-		}()
-
-		err := trackable.Start(s.runtimeCtx)
+		err := trackable.Stop(s.shutdownCtx)
 		if err != nil {
-			return fmt.Errorf("shutdown: starting service service: %w", err)
+			s.Log.Error("shutdown: failed to stop service", "error", err)
 		}
+	})
 
-		s.Log.Debug("shutdown: starting service")
+	err := trackable.Start(s.runtimeCtx)
+	if err != nil {
+		return fmt.Errorf("shutdown: starting service: %w", err)
 	}
+
+	s.Log.Debug("shutdown: starting service")
 
 	return nil
 }
