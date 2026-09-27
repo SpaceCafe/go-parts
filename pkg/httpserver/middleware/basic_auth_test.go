@@ -75,15 +75,39 @@ func TestBasicAuth(t *testing.T) {
 			wantAuthHeader: "Basic realm=\"Restricted\"",
 		},
 		{
-			name: "valid basic auth as token",
+			name: "token rejected as basic password",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Tokens = []string{"pass"}
+				cfg.Tokens = []string{"valid-token"}
+				cfg.UseTokens = true
+			},
+			basicAuth:      true,
+			username:       "anyone",
+			password:       "valid-token",
+			wantStatus:     http.StatusUnauthorized,
+			wantAuthHeader: "Basic realm=\"Restricted\"",
+		},
+		{
+			name: "principal login with tokens enabled",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Principals = map[string]string{"alice": "alicepass"}
+				cfg.Tokens = []string{"valid-token"}
 				cfg.UseTokens = true
 			},
 			basicAuth:  true,
-			username:   "user",
-			password:   "pass",
+			username:   "alice",
+			password:   "alicepass",
 			wantStatus: http.StatusOK,
+		},
+		{
+			name: "principal password rejected as token",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Principals = map[string]string{"alice": "alicepass"}
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"Authorization": "Token alicepass",
+			},
+			wantStatus: http.StatusUnauthorized,
 		},
 	}
 
@@ -120,7 +144,7 @@ func TestBasicAuth(t *testing.T) {
 			if tt.wantAuthHeader != "" {
 				assert.Contains(
 					t,
-					rec.Header().Get("WWW-Authenticate"),
+					rec.Header().Values("WWW-Authenticate"),
 					tt.wantAuthHeader,
 					"unexpected 'WWW-Authenticate' header",
 				)

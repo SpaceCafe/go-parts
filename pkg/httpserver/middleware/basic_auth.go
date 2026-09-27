@@ -33,13 +33,21 @@ var (
 // Authenticator is a function type that validates a username and password, returning true if authentication succeeds.
 type Authenticator func(username, password string) bool
 
+// TokenAuthenticator validates a token from a "Token" Authorization header, returning true if
+// authentication succeeds.
+type TokenAuthenticator func(token string) bool
+
 // BasicAuthConfig holds the configuration for BasicAuth middleware.
 type BasicAuthConfig struct {
 	// Principals defines a mapping of usernames to their respective passwords for basic authentication.
 	Principals map[string]string `json:"principals" yaml:"principals"`
 
-	// Authenticator validates a username and password.
+	// Authenticator validates the username and password of HTTP Basic credentials.
 	Authenticator Authenticator `env:"-" json:"-" yaml:"-"`
+
+	// TokenAuthenticator validates a token when UseTokens is enabled. It is never consulted for
+	// HTTP Basic credentials.
+	TokenAuthenticator TokenAuthenticator `env:"-" json:"-" yaml:"-"`
 
 	// Tokens defines a list of pre-approved tokens for token-based authentication.
 	Tokens []string `json:"tokens" yaml:"tokens"`
@@ -49,11 +57,12 @@ type BasicAuthConfig struct {
 }
 
 // SetDefaults initializes empty principal and token collections and installs the built-in
-// authenticator that checks credentials against them.
+// authenticators that check credentials against them.
 func (c *BasicAuthConfig) SetDefaults() {
 	c.Principals = map[string]string{}
 	c.Tokens = []string{}
 	c.Authenticator = configAuthenticator(c)
+	c.TokenAuthenticator = configTokenAuthenticator(c)
 	c.UseTokens = false
 }
 
@@ -78,16 +87,17 @@ func (c *BasicAuthConfig) Validate() error {
 }
 
 // BasicAuth returns middleware that authenticates each request. When token auth is enabled, a valid
-// bearer token in the Authorization header is accepted first, otherwise HTTP Basic credentials are
-// checked. Unauthenticated requests are aborted with a 401 and the appropriate challenge.
+// token in a "Token" Authorization header is checked with TokenAuthenticator. HTTP Basic credentials
+// are always checked with Authenticator, so tokens are never accepted as Basic passwords.
+// Unauthenticated requests are aborted with a 401 and the challenges of every enabled scheme.
 func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-			if cfg.UseTokens {
+			if cfg.UseTokens && cfg.TokenAuthenticator != nil {
 				authHeader := req.Header.Get("Authorization")
 
 				if strings.HasPrefix(authHeader, authTokenPrefix) &&
-					cfg.Authenticator("", authHeader[len(authTokenPrefix):]) {
+					cfg.TokenAuthenticator(authHeader[len(authTokenPrefix):]) {
 					next.ServeHTTP(resp, req)
 
 					return
@@ -106,24 +116,26 @@ func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 	}
 }
 
-// configAuthenticator builds the default Authenticator over BasicAuthConfig. In token mode it accepts any
-// password matching a configured token and ignores the username, otherwise it looks the username up
-// among the principals and compares its password.
+// configAuthenticator builds the default Authenticator over BasicAuthConfig. It looks the username
+// up among the principals and compares its password.
 func configAuthenticator(cfg *BasicAuthConfig) Authenticator {
 	return func(username, password string) bool {
-		if cfg.UseTokens {
-			for i := range cfg.Tokens {
-				ok := ValidatePasswords(cfg.Tokens[i], password)
-				if ok {
-					return true
-				}
-			}
-
-			return false
-		}
-
 		if expectedPassword, ok := cfg.Principals[username]; ok {
 			return ValidatePasswords(expectedPassword, password)
+		}
+
+		return false
+	}
+}
+
+// configTokenAuthenticator builds the default TokenAuthenticator over BasicAuthConfig. It accepts a
+// token that matches any configured token.
+func configTokenAuthenticator(cfg *BasicAuthConfig) TokenAuthenticator {
+	return func(token string) bool {
+		for i := range cfg.Tokens {
+			if ValidatePasswords(cfg.Tokens[i], token) {
+				return true
+			}
 		}
 
 		return false
@@ -147,13 +159,13 @@ func ValidatePasswords(expected, actual string) bool {
 	return validator(expectedBytes, actualBytes) == nil
 }
 
-// abortBasicAuth writes the WWW-Authenticate challenge matching the configured scheme and aborts
-// the request with a 401.
+// abortBasicAuth writes a WWW-Authenticate challenge for every enabled scheme and aborts the
+// request with a 401.
 func abortBasicAuth(resp http.ResponseWriter, req *http.Request, useTokens bool) {
+	resp.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+
 	if useTokens {
-		resp.Header().Set("WWW-Authenticate", `Token`)
-	} else {
-		resp.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+		resp.Header().Add("WWW-Authenticate", `Token`)
 	}
 
 	httpserver.Abort(resp, req, http.StatusUnauthorized, nil)
