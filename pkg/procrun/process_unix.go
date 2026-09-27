@@ -47,6 +47,12 @@ func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 		Setpgid: true,
 	}
 
+	// On timeout or cancellation, kill the whole process group instead of only the direct child, so
+	// grandchildren do not survive. With Setpgid the group ID equals the child's PID.
+	cmd.Cancel = func() error {
+		return unix.Kill(-cmd.Process.Pid, unix.SIGKILL)
+	}
+
 	runner.Log.Debug("procrun: applying process attributes")
 
 	return nil

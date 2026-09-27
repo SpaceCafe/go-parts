@@ -22,6 +22,10 @@ var (
 	ErrProcessTermination = errors.New("procrun: process terminated unexpectedly")
 )
 
+// WaitDelay bounds how long Run waits for the output pipes to close after the process was killed or
+// exited. It stops a grandchild that keeps the pipes open from blocking Run indefinitely.
+const WaitDelay = 5 * time.Second
+
 // Command describes the program to execute and its execution environment.
 type Command struct {
 	Stdin          io.Reader
@@ -193,6 +197,10 @@ func (r *Runner) createExecCommand(ctx context.Context, cmd *Command, workDir st
 	execCmd.Stdin = cmd.Stdin
 	execCmd.Stdout = cmd.Stdout
 	execCmd.Stderr = cmd.Stderr
+
+	// Without WaitDelay, Wait blocks until every process holding the stdout or stderr pipe exits,
+	// which a surviving grandchild can delay forever. After the delay the pipes are closed.
+	execCmd.WaitDelay = WaitDelay
 
 	return execCmd
 }

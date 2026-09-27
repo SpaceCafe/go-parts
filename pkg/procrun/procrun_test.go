@@ -225,3 +225,29 @@ func TestRunner_AutoCleanup_KeepsCallerDir(t *testing.T) {
 	assert.True(t, res.IsTempDir)
 	assert.NoDirExists(t, res.WorkDir)
 }
+
+func TestRunner_Run_TimeoutKillsProcessGroup(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	require.NoError(t, cfg.Validate())
+
+	var stdout bytes.Buffer
+
+	begin := time.Now()
+
+	// The background sleep inherits stdout. Killing only sh would leave it holding the pipe open.
+	res, err := procrun.New(cfg).Run(t.Context(), &procrun.Command{
+		Path:    "sh",
+		Args:    []string{"-c", "sleep 30 & sleep 30"},
+		Stdout:  &stdout,
+		Timeout: 200 * time.Millisecond,
+	})
+
+	require.ErrorIs(t, err, procrun.ErrProcessTermination)
+	require.NotNil(t, res)
+	assert.Less(t, time.Since(begin), procrun.WaitDelay, "Run must not wait for the grandchild")
+}
