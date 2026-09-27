@@ -7,21 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/spacecafe/go-parts/pkg/xutil"
 )
 
 var (
+	ErrInvalidBase64     = errors.New("httpserver: file value must be valid base64")
 	ErrInvalidFileHeader = errors.New("httpserver: invalid file header")
 	ErrInvalidFileValue  = errors.New("httpserver: file value must be a JSON string")
 	ErrInvalidFilename   = errors.New("httpserver: filename must be a single path element")
 	ErrReadFileHeader    = errors.New("httpserver: failed to read file header")
 	ErrTargetDir         = errors.New("httpserver: failed to use target directory")
+	ErrTargetExists      = errors.New("httpserver: target file already exists")
 	ErrTempDirCreation   = errors.New("httpserver: failed to create temporary directory")
 	ErrTempFileCreation  = errors.New("httpserver: failed to create temporary file")
 	ErrWriteFile         = errors.New("httpserver: failed to write request to target file")
@@ -50,15 +52,17 @@ func GetFileFromBody(req *http.Request, magicBytes []byte) *File {
 	return file
 }
 
-// rename is os.Rename, replaceable in tests to simulate a cross-filesystem move.
+// link is os.Link, replaceable in tests to simulate a cross-filesystem move.
 //
-//nolint:gochecknoglobals // Test seam for the EXDEV fallback.
-var rename = os.Rename
+//nolint:gochecknoglobals // Test seam for the copy fallback.
+var link = os.Link
 
-// Move moves the file into the given directory under the filename and returns the resulting path.
-// If the target directory is empty, the file is renamed. The filename must be a single path
-// element, so a client-supplied name cannot escape dir. When dir is on another filesystem than the
-// temporary directory, the file is copied and the original removed.
+// Move moves the file into the given directory under the filename. If the target directory is
+// empty, the file is renamed. The filename must be a single path element, so a client-supplied name
+// cannot escape dir. Move never replaces an existing entry: if anything, a symlink included, already
+// occupies the target path, it fails with ErrTargetExists and leaves both files untouched. When dir
+// is on another filesystem than the temporary directory, the file is copied and the original
+// removed.
 func (f *File) Move(dir, filename string) (err error) {
 	if filename != filepath.Base(filename) || filename == "." || filename == ".." {
 		return fmt.Errorf("%w: %q", ErrInvalidFilename, filename)
@@ -75,7 +79,16 @@ func (f *File) Move(dir, filename string) (err error) {
 
 	targetPath := filepath.Join(dir, filename)
 
+	// Moving onto itself is a no-op; the link below would report the file as its own obstacle.
+	if targetPath == f.Path {
+		return nil
+	}
+
 	err = moveFile(f.Path, targetPath)
+	if errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("%w: %q: %w", ErrTargetExists, filename, err)
+	}
+
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrTargetDir, err)
 	}
@@ -94,19 +107,22 @@ func (f *File) Move(dir, filename string) (err error) {
 	return nil
 }
 
-// moveFile renames src to dest, falling back to copy and remove when they are on different
-// filesystems (for example a tmpfs /tmp), where rename fails with EXDEV.
+// moveFile moves src to dest without replacing an existing dest, returning an error matching
+// fs.ErrExist instead. os.Rename cannot do that: it silently replaces dest. A hard link followed by
+// removing src is atomic in that respect and does not follow a symlink at dest. Where linking is
+// impossible, across filesystems (for example a tmpfs /tmp) or on filesystems without hard links,
+// the file is copied exclusively instead.
 func moveFile(src, dest string) error {
-	err := rename(src, dest)
-	if !errors.Is(err, syscall.EXDEV) {
+	err := link(src, dest)
+	if errors.Is(err, fs.ErrExist) {
 		return err
 	}
 
-	err = xutil.CopyFile(src, dest)
 	if err != nil {
-		_ = os.Remove(dest)
-
-		return err
+		err = xutil.CopyFileExclusive(src, dest)
+		if err != nil {
+			return err
+		}
 	}
 
 	return os.Remove(src)
@@ -228,7 +244,17 @@ func (f *Base64File) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	f.reader = base64.NewDecoder(base64.StdEncoding, bytes.NewReader(data))
+	// Decode up front rather than streaming: the value is in memory anyway, and a malformed value is
+	// the client's fault (400), which a decoding failure inside write would report as a 500.
+	decoded, err := base64.StdEncoding.DecodeString(string(data))
+	if err != nil {
+		err = fmt.Errorf("%w: %w", ErrInvalidBase64, err)
+		f.fail(http.StatusBadRequest, err)
+
+		return err
+	}
+
+	f.reader = bytes.NewReader(decoded)
 	f.create(nil)
 
 	return f.Err

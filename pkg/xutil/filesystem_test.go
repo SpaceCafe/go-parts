@@ -1,6 +1,7 @@
 package xutil_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -154,4 +155,58 @@ func TestCopyFile_SameFile(t *testing.T) {
 	content, err := os.ReadFile(src)
 	require.NoError(t, err)
 	assert.Equal(t, "keep me", string(content))
+}
+
+func TestCopyFileExclusive(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	require.NoError(t, os.WriteFile(src, []byte("content"), 0o600))
+
+	dest := filepath.Join(dir, "dest")
+	require.NoError(t, xutil.CopyFileExclusive(src, dest))
+
+	content, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	assert.Equal(t, "content", string(content))
+
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(dest)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
+}
+
+func TestCopyFileExclusive_RefusesExistingDest(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	require.NoError(t, os.WriteFile(src, []byte("new"), 0o600))
+
+	existing := filepath.Join(dir, "existing")
+	require.NoError(t, os.WriteFile(existing, []byte("keep me"), 0o600))
+
+	symlink := filepath.Join(dir, "symlink")
+	require.NoError(t, os.Symlink(existing, symlink))
+
+	dangling := filepath.Join(dir, "dangling")
+	require.NoError(t, os.Symlink(filepath.Join(dir, "missing"), dangling))
+
+	for _, dest := range []string{existing, symlink, dangling, src} {
+		require.ErrorIs(t, xutil.CopyFileExclusive(src, dest), fs.ErrExist, dest)
+	}
+
+	assertFileContent(t, existing, "keep me")
+	assertFileContent(t, src, "new")
+	assert.NoFileExists(t, filepath.Join(dir, "missing"))
+}
+
+func assertFileContent(t *testing.T, path, want string) {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, want, string(content))
 }

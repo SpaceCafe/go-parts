@@ -153,6 +153,73 @@ func TestFile_Move_CleanupKeepsTargetDir(t *testing.T) {
 	assertContent(t, filepath.Join(targetDir, "output.bin"), "payload")
 }
 
+func TestFile_Move_RefusesExistingTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		setup func(t *testing.T, targetPath string)
+		name  string
+	}{
+		{
+			name: "regular file",
+			setup: func(t *testing.T, targetPath string) {
+				t.Helper()
+
+				require.NoError(t, os.WriteFile(targetPath, []byte("earlier"), 0o600))
+			},
+		},
+		{
+			name: "symlink to a file outside the target directory",
+			setup: func(t *testing.T, targetPath string) {
+				t.Helper()
+
+				outside := filepath.Join(t.TempDir(), "outside.bin")
+				require.NoError(t, os.WriteFile(outside, []byte("earlier"), 0o600))
+				require.NoError(t, os.Symlink(outside, targetPath))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			targetDir := t.TempDir()
+			targetPath := filepath.Join(targetDir, "output.bin")
+			tt.setup(t, targetPath)
+
+			file := httpserver.GetFileFromBody(newBodyRequest(t, strings.NewReader("payload")), nil)
+			require.NoError(t, file.Err)
+
+			t.Cleanup(func() { _ = file.Cleanup() })
+
+			sourcePath := file.Path
+
+			require.ErrorIs(t, file.Move(targetDir, "output.bin"), httpserver.ErrTargetExists)
+
+			// Both the existing entry (read through the symlink, if any) and the upload are intact.
+			assertContent(t, targetPath, "earlier")
+			assert.Equal(t, sourcePath, file.Path)
+			assertContent(t, file.Path, "payload")
+		})
+	}
+}
+
+func TestFile_Move_OntoItself(t *testing.T) {
+	t.Parallel()
+
+	file := httpserver.GetFileFromBody(newBodyRequest(t, strings.NewReader("payload")), nil)
+	require.NoError(t, file.Err)
+
+	t.Cleanup(func() { _ = file.Cleanup() })
+
+	sourcePath := file.Path
+
+	require.NoError(t, file.Move("", filepath.Base(sourcePath)))
+	assert.Equal(t, sourcePath, file.Path)
+	assertContent(t, file.Path, "payload")
+}
+
 func TestFile_Move_CleanupRemovesTempDirAfterRename(t *testing.T) {
 	t.Parallel()
 
@@ -216,9 +283,15 @@ func TestBase64File_UnmarshalJSON(t *testing.T) {
 		name        string
 		data        string
 		wantContent string
+		wantCode    int
 	}{
 		{name: "base64 value", data: `"cGF5bG9hZA=="`, wantContent: `payload`},
-		{name: "invalid base64 value", data: `"cGF5bG9hZA="`, wantErr: httpserver.ErrWriteFile},
+		{
+			name:     "invalid base64 value",
+			data:     `"cGF5bG9hZA="`,
+			wantErr:  httpserver.ErrInvalidBase64,
+			wantCode: http.StatusBadRequest,
+		},
 		{name: "base64 with escaped slash", data: `"Pz8\/"`, wantContent: "???"},
 		{name: "object value", data: `{"key":"value"}`, wantErr: httpserver.ErrInvalidFileValue},
 		{name: "null value", data: `null`, wantErr: httpserver.ErrInvalidFileValue},
@@ -235,6 +308,10 @@ func TestBase64File_UnmarshalJSON(t *testing.T) {
 			err := json.Unmarshal([]byte(`{"file":`+tt.data+`}`), &payload)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
+
+				if tt.wantCode != 0 {
+					assert.Equal(t, tt.wantCode, payload.File.Code)
+				}
 
 				return
 			}
