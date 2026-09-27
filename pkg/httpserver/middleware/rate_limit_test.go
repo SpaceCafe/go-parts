@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -67,7 +68,7 @@ func TestRateLimit(t *testing.T) {
 			},
 			requestCount: 3,
 			requestDelay: 50 * time.Millisecond,
-			wantStatus:   []int{http.StatusOK, http.StatusOK, http.StatusRequestTimeout},
+			wantStatus:   []int{http.StatusOK, http.StatusOK, http.StatusServiceUnavailable},
 		},
 		{
 			name: "no concurrent limit when set to 0",
@@ -162,4 +163,77 @@ func TestRateLimit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRateLimit_RetryAfter(t *testing.T) {
+	t.Parallel()
+
+	cfg := &middleware.RateLimitConfig{}
+	cfg.SetDefaults()
+	cfg.BucketCapacity = 1
+	cfg.LeakInterval = 1500 * time.Millisecond
+
+	handler := middleware.RateLimit(t.Context(), cfg)(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+
+	for _, wantStatus := range []int{http.StatusOK, http.StatusTooManyRequests} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(
+			rec,
+			httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+		)
+
+		assert.Equal(t, wantStatus, rec.Code)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(
+		rec,
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+	)
+	assert.Equal(t, "2", rec.Header().Get("Retry-After"))
+}
+
+func TestRateLimit_ClientDisconnectsWhileQueued(t *testing.T) {
+	t.Parallel()
+
+	cfg := &middleware.RateLimitConfig{}
+	cfg.SetDefaults()
+	cfg.ConcurrentRequestLimit = 1
+	cfg.RequestTimeout = time.Minute
+
+	release := make(chan struct{})
+	started := make(chan struct{})
+
+	handler := middleware.RateLimit(t.Context(), cfg)(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			close(started)
+			<-release
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+
+	go handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+	)
+
+	<-started
+
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+
+	rec := httptest.NewRecorder()
+	begin := time.Now()
+
+	handler.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/", http.NoBody))
+
+	assert.Less(t, time.Since(begin), time.Second, "queued request must stop waiting on disconnect")
+	assert.False(t, rec.Flushed)
+	assert.Empty(t, rec.Body.String())
+
+	close(release)
 }

@@ -3,7 +3,9 @@ package middleware
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
@@ -89,29 +91,45 @@ func (c *RateLimitConfig) Validate() error {
 
 // RateLimit returns middleware for rate-limiting incoming requests based on the provided configuration.
 // It uses a leaky bucket algorithm for burst control and concurrent slot limiting for simultaneous requests.
+//
+// The limits are global: all clients share one bucket and one set of concurrent slots, so a single
+// client can use up the capacity for everyone. Combine it with per-client limiting in a reverse
+// proxy if that matters.
+//
+// A full bucket is answered with 429 Too Many Requests. A request that waits longer than
+// RequestTimeout for a concurrent slot is answered with 503 Service Unavailable. Both carry a
+// Retry-After header of one leak interval (at least one second). A request whose client disconnects
+// while waiting is dropped without a response.
 func RateLimit(ctx context.Context, cfg *RateLimitConfig) httpserver.Middleware {
 	bucket := NewLeakyBucket(cfg.BucketCapacity)
 	bucket.StartLeaking(ctx, cfg.LeakRate, cfg.LeakInterval)
 
 	concurrentSlots := NewLeakyBucket(cfg.ConcurrentRequestLimit)
+	retryAfter := strconv.Itoa(max(1, int(math.Ceil(cfg.LeakInterval.Seconds()))))
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-			if bucket.TryAdd() {
-				if concurrentSlots.TryAddWithTimeout(cfg.RequestTimeout) {
-					defer concurrentSlots.Remove()
-
-					next.ServeHTTP(resp, req)
-
-					return
-				}
-
-				httpserver.Abort(resp, req, http.StatusRequestTimeout, nil)
+			if !bucket.TryAdd() {
+				resp.Header().Set("Retry-After", retryAfter)
+				httpserver.Abort(resp, req, http.StatusTooManyRequests, nil)
 
 				return
 			}
 
-			httpserver.Abort(resp, req, http.StatusTooManyRequests, nil)
+			if !concurrentSlots.TryAddWithContext(req.Context(), cfg.RequestTimeout) {
+				if req.Context().Err() != nil {
+					return
+				}
+
+				resp.Header().Set("Retry-After", retryAfter)
+				httpserver.Abort(resp, req, http.StatusServiceUnavailable, nil)
+
+				return
+			}
+
+			defer concurrentSlots.Remove()
+
+			next.ServeHTTP(resp, req)
 		})
 	}
 }
@@ -155,11 +173,12 @@ func (b LeakyBucket) StartLeaking(ctx context.Context, rate int, interval time.D
 		for {
 			select {
 			case <-ticker.C:
+			drain:
 				for range rate {
 					select {
 					case <-b:
 					default:
-						break
+						break drain
 					}
 				}
 			case <-ctx.Done():
@@ -183,17 +202,28 @@ func (b LeakyBucket) TryAdd() bool {
 	}
 }
 
-// TryAddWithTimeout attempts to add an element to the bucket within the specified timeout duration.
-// Returns true if successful.
-func (b LeakyBucket) TryAddWithTimeout(timeout time.Duration) bool {
+// TryAddWithContext attempts to add an element to the bucket within the specified timeout duration,
+// giving up early when ctx is done. Returns true if successful.
+func (b LeakyBucket) TryAddWithContext(ctx context.Context, timeout time.Duration) bool {
 	if b == nil {
 		return true
 	}
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case b <- struct{}{}:
 		return true
-	case <-time.After(timeout):
+	case <-timer.C:
+		return false
+	case <-ctx.Done():
 		return false
 	}
+}
+
+// TryAddWithTimeout attempts to add an element to the bucket within the specified timeout duration.
+// Returns true if successful.
+func (b LeakyBucket) TryAddWithTimeout(timeout time.Duration) bool {
+	return b.TryAddWithContext(context.Background(), timeout)
 }
