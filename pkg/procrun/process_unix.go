@@ -26,13 +26,17 @@ const (
 // applyArguments configures a Runner's arguments based on its configuration. A helper binary that
 // is not configured is skipped, so its restrictions are not applied but the command still runs, as
 // checkCapabilities warns.
+//
+// prlimit runs first, outside the sandbox, so its own binary and libraries need no allowlist entry.
+// The limits it sets survive the exec into landlock-restrict and the target. landlock-restrict runs
+// last, so only the target itself runs inside the sandbox.
 func applyArguments(runner *Runner) error {
-	if runner.cfg.LandlockBin != "" {
-		runner.args = append(runner.args, landlockArgs(runner.cfg)...)
-	}
-
 	if runner.cfg.PrlimitBin != "" {
 		runner.args = append(runner.args, prlimitArgs(runner.cfg)...)
+	}
+
+	if runner.cfg.LandlockBin != "" {
+		runner.args = append(runner.args, landlockArgs(runner.cfg)...)
 	}
 
 	runner.Log.Debug("procrun: created args to restrict processes", "args", runner.args)
