@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -137,15 +138,26 @@ func GenerateTemplate(target Validatable, filename, envPrefix string) (err error
 
 // Load loads configuration from multiple sources and validates the result.
 // This is simpler than using a Loader struct for this straightforward operation.
+//
+// If target implements Defaultable and is still the zero value, SetDefaults is applied first. A
+// target that already holds values (for example from New, with some fields changed afterwards) is
+// left as is, so those values are kept unless a source overrides them. A target with only some
+// fields set by hand therefore gets no defaults; call SetDefaults or use New before setting them.
 func Load(target Validatable, sources ...Source) error {
 	err := validatePointerToStruct(target)
 	if err != nil {
 		return err
 	}
 
-	// Apply defaults if the target implements Defaultable
 	if defaultable, ok := target.(Defaultable); ok {
-		defaultable.SetDefaults()
+		if reflect.ValueOf(target).Elem().IsZero() {
+			defaultable.SetDefaults()
+		} else {
+			slog.Debug(
+				"config: target is not the zero value, defaults not applied",
+				"type", fmt.Sprintf("%T", target),
+			)
+		}
 	}
 
 	for _, s := range sources {

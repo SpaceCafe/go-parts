@@ -282,3 +282,26 @@ func TestGenerateTemplate_Errors(t *testing.T) {
 		assert.NoFileExists(t, filePath)
 	})
 }
+
+func TestLoad_Defaults(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero target gets defaults", func(t *testing.T) {
+		t.Parallel()
+
+		var target MockConfig
+
+		require.NoError(t, config.Load(&target))
+		assert.EqualExportedValues(t, MockConfig{Name: "default-app", Port: 8080}, target)
+	})
+
+	t.Run("values set after New are kept", func(t *testing.T) {
+		t.Parallel()
+
+		target := config.New[MockConfig]()
+		target.Port = 9000
+
+		require.NoError(t, config.Load(target))
+		assert.EqualExportedValues(t, MockConfig{Name: "default-app", Port: 9000}, *target)
+	})
+}
