@@ -1,6 +1,3 @@
-// Package typeconv provides utilities for converting string values to various Go types
-// using reflection. This is useful for configuration loading, CLI parsing, and other
-// scenarios where string data needs to be converted to strongly typed values.
 package typeconv
 
 import (
