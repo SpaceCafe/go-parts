@@ -135,8 +135,15 @@ func CORS(cfg *CORSConfig) httpserver.Middleware {
 
 			setCORSHeaders(resp, allowOrigin, cfg.AllowCredentials, exposeHeaders)
 
-			if req.Method == http.MethodOptions {
-				handlePreflightRequest(resp, allowOrigin, allowMethods, allowHeaders, maxAge)
+			if isPreflight(req) {
+				handlePreflightRequest(
+					resp,
+					req,
+					allowOrigin,
+					allowMethods,
+					allowHeaders,
+					maxAge,
+				)
 
 				return
 			}
@@ -208,22 +215,36 @@ func setCORSHeaders(
 	}
 }
 
-// handlePreflightRequest answers an OPTIONS preflight, adding the allowed methods, headers, and
-// cache duration for an allowed origin, and always responds with "204 No Content".
+// isPreflight reports whether req is a CORS preflight. A plain OPTIONS request, without Origin or
+// Access-Control-Request-Method, is passed on to the handler like any other request.
+func isPreflight(req *http.Request) bool {
+	return req.Method == http.MethodOptions &&
+		req.Header.Get("Origin") != "" &&
+		req.Header.Get("Access-Control-Request-Method") != ""
+}
+
+// handlePreflightRequest answers a preflight. An allowed origin gets the allowed methods, headers,
+// and cache duration with "204 No Content". A disallowed origin gets "403 Forbidden", so the
+// rejection is visible in the network log instead of looking like a successful preflight.
 func handlePreflightRequest(
 	resp http.ResponseWriter,
+	req *http.Request,
 	allowOrigin, allowMethods, allowHeaders, maxAge string,
 ) {
-	if allowOrigin != "" {
-		resp.Header().Set("Access-Control-Allow-Methods", allowMethods)
+	if allowOrigin == "" {
+		httpserver.Abort(resp, req, http.StatusForbidden, nil)
 
-		if allowHeaders != "" {
-			resp.Header().Set("Access-Control-Allow-Headers", allowHeaders)
-		}
+		return
+	}
 
-		if maxAge != "" {
-			resp.Header().Set("Access-Control-Max-Age", maxAge)
-		}
+	resp.Header().Set("Access-Control-Allow-Methods", allowMethods)
+
+	if allowHeaders != "" {
+		resp.Header().Set("Access-Control-Allow-Headers", allowHeaders)
+	}
+
+	if maxAge != "" {
+		resp.Header().Set("Access-Control-Max-Age", maxAge)
 	}
 
 	resp.WriteHeader(http.StatusNoContent)

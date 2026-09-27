@@ -16,6 +16,7 @@ func TestCORS(t *testing.T) {
 	tests := []struct {
 		cfg                *middleware.CORSConfig
 		expectedHeaders    map[string]string
+		requestHeaders     map[string]string
 		name               string
 		requestOrigin      string
 		requestMethod      string
@@ -68,6 +69,7 @@ func TestCORS(t *testing.T) {
 			},
 			requestOrigin:      "https://example.com",
 			requestMethod:      http.MethodOptions,
+			requestHeaders:     map[string]string{"Access-Control-Request-Method": "POST"},
 			expectedStatusCode: http.StatusNoContent,
 			expectedHeaders: map[string]string{
 				"Access-Control-Allow-Origin":  "https://example.com",
@@ -84,8 +86,33 @@ func TestCORS(t *testing.T) {
 			},
 			requestOrigin:      "https://notallowed.com",
 			requestMethod:      http.MethodOptions,
-			expectedStatusCode: http.StatusNoContent,
+			requestHeaders:     map[string]string{"Access-Control-Request-Method": "POST"},
+			expectedStatusCode: http.StatusForbidden,
 			expectedHeaders:    map[string]string{}, // No CORS headers expected
+		},
+		{
+			name: "OPTIONS without request method reaches handler",
+			cfg: &middleware.CORSConfig{
+				AllowedOrigins: []string{"https://example.com"},
+				AllowedMethods: []string{http.MethodGet},
+			},
+			requestOrigin:      "https://example.com",
+			requestMethod:      http.MethodOptions,
+			expectedStatusCode: http.StatusOK,
+			expectedHeaders: map[string]string{
+				"Access-Control-Allow-Origin": "https://example.com",
+			},
+		},
+		{
+			name: "OPTIONS without origin reaches handler",
+			cfg: &middleware.CORSConfig{
+				AllowedOrigins: []string{"https://example.com"},
+				AllowedMethods: []string{http.MethodGet},
+			},
+			requestMethod:      http.MethodOptions,
+			requestHeaders:     map[string]string{"Access-Control-Request-Method": "POST"},
+			expectedStatusCode: http.StatusOK,
+			expectedHeaders:    map[string]string{},
 		},
 		{
 			name: "credentials support enabled",
@@ -135,6 +162,10 @@ func TestCORS(t *testing.T) {
 			)
 			if tt.requestOrigin != "" {
 				req.Header.Set("Origin", tt.requestOrigin)
+			}
+
+			for key, value := range tt.requestHeaders {
+				req.Header.Set(key, value)
 			}
 
 			rec := httptest.NewRecorder()
