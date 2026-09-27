@@ -187,6 +187,25 @@ func TestHTTPServer_Stop(t *testing.T) {
 	require.NoError(t, server.Stop(context.Background()))
 }
 
+func TestHTTPServer_StartAfterStop(t *testing.T) {
+	t.Parallel()
+
+	server := httpserver.New(&httpserver.Config{Port: 8447}, httpserver.WithLogger(&mockLogger{}))
+	require.NoError(t, server.Start(context.Background()))
+	require.NoError(t, server.Stop(context.Background()))
+
+	require.ErrorIs(t, server.Start(context.Background()), httpserver.ErrServerStopped)
+}
+
+func TestHTTPServer_StartAfterServerShutdown(t *testing.T) {
+	t.Parallel()
+
+	server := httpserver.New(&httpserver.Config{Port: 8448}, httpserver.WithLogger(&mockLogger{}))
+	require.NoError(t, server.Server.Shutdown(context.Background()))
+
+	require.ErrorIs(t, server.Start(context.Background()), httpserver.ErrServerStopped)
+}
+
 type mockLogger struct{}
 
 func (m *mockLogger) Debug(_ string, _ ...any) {}

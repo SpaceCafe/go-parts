@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/log"
@@ -23,6 +24,7 @@ var (
 	_ shutdown.Trackable = (*HTTPServer)(nil)
 
 	ErrInvalidContext = errors.New("httpserver: context must not be nil or cancelled")
+	ErrServerStopped  = errors.New("httpserver: server was stopped and cannot be started again")
 )
 
 // HTTPServer wraps an http.Server together with its configuration, logger, and error renderer
@@ -38,6 +40,9 @@ type HTTPServer struct {
 
 	// errorRenderer formats error responses, defaults to RenderErrorAsText unless set via an Option.
 	errorRenderer ErrorRenderer
+
+	// stopped is set by Stop. An http.Server cannot be reused after Shutdown, so Start refuses to run.
+	stopped atomic.Bool
 }
 
 // New builds an HTTPServer from Config and applies the given options. TLS is enabled only when both
@@ -83,10 +88,15 @@ func New(cfg *Config, opts ...Option) *HTTPServer {
 
 // Start launches the server in a background goroutine and returns once it is listening. It blocks
 // only for StartupCheckTimeout, so an immediate bind failure surfaces as an error, while a later
-// failure is logged rather than returned.
+// failure is logged rather than returned. A server cannot be started again after Stop; Start then
+// fails with ErrServerStopped, and a new HTTPServer is needed.
 func (s *HTTPServer) Start(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrInvalidContext
+	}
+
+	if s.stopped.Load() {
+		return ErrServerStopped
 	}
 
 	errCh := make(chan error, 1)
@@ -111,11 +121,13 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 	// Wait briefly to catch early initialization errors.
 	select {
 	case err := <-errCh:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
+		// ErrServerClosed this early means the server was shut down before it ever served, for
+		// example through Server.Shutdown, which Stop cannot see.
+		if errors.Is(err, http.ErrServerClosed) {
+			return ErrServerStopped
 		}
 
-		return nil
+		return err
 	case <-time.After(StartupCheckTimeout):
 		go func() {
 			err := <-errCh
@@ -134,6 +146,7 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 // context.Context is cancelled.
 func (s *HTTPServer) Stop(ctx context.Context) error {
 	s.Log.Info("httpserver: stopping HTTP server")
+	s.stopped.Store(true)
 
 	err := s.Server.Shutdown(ctx)
 	if err != nil {
