@@ -82,13 +82,24 @@ func TestEnvSource_Load(t *testing.T) {
 			args: args{
 				target: &Config{},
 				env: map[string]string{
-					"NAME":      "standalone",
-					"PORT":      "9000",
-					"PORT_FILE": "non-existent",
-					"CC_BIN":    "gcc",
+					"NAME":   "standalone",
+					"PORT":   "9000",
+					"CC_BIN": "gcc",
 				},
 			},
 			want: Config{Name: "standalone", Port: 9000, CCBin: "gcc"},
+		},
+		{
+			name:   "unreadable _FILE does not fall back",
+			fields: fields{Prefix: ""},
+			args: args{
+				target: &Config{},
+				env: map[string]string{
+					"PORT":      "9000",
+					"PORT_FILE": "non-existent",
+				},
+			},
+			wantErr: true,
 		},
 		{
 			name:    "invalid target (not a pointer)",
@@ -143,4 +154,23 @@ func TestEnvSource_Load(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnvSource_Load_Values(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "secret")
+	require.NoError(t, os.WriteFile(secretFile, []byte("  s3cr3t \n"), 0o600))
+
+	t.Setenv("VAL_SECRET_FILE", secretFile)
+	t.Setenv("VAL_PADDED", "  keep spaces  ")
+
+	var target struct {
+		Secret string
+		Padded string
+	}
+
+	require.NoError(t, config.EnvSource{Prefix: "VAL"}.Load(&target))
+
+	// A single trailing newline is removed from files; everything else is kept as is.
+	assert.Equal(t, "  s3cr3t ", target.Secret)
+	assert.Equal(t, "  keep spaces  ", target.Padded)
 }

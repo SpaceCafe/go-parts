@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"unicode"
@@ -121,17 +121,25 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 			*s.names = append(*s.names, envName)
 		}
 
-		// Load the environment variable value
-		envValue, exists := lookupEnv(envName)
-		if !exists {
-			continue
-		}
-
-		// Set the field value
-		err := typeconv.Default.Convert(field, envValue)
+		err := loadField(field, envName)
 		if err != nil {
-			return fmt.Errorf("%w: %w", ErrConversion, err)
+			return err
 		}
+	}
+
+	return nil
+}
+
+// loadField sets field from the environment variable envName, if it is set.
+func loadField(field reflect.Value, envName string) error {
+	envValue, exists, err := lookupEnv(envName)
+	if err != nil || !exists {
+		return err
+	}
+
+	err = typeconv.Default.Convert(field, envValue)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrConversion, err)
 	}
 
 	return nil
@@ -168,19 +176,25 @@ func createEnvName(prefix, fieldName, envTag string) string {
 	return result.String()
 }
 
-func lookupEnv(envName string) (string, bool) {
-	envValue, exists := os.LookupEnv(envName + "_FILE")
+// lookupEnv returns the value for envName. If envName_FILE is set, the value is read from that file
+// (the Docker and Kubernetes secrets convention), and a read failure is an error rather than a
+// silent fallback to envName. File contents lose a single trailing line break, which editors and
+// secret mounts commonly add; everything else, including plain variables, is used unchanged.
+func lookupEnv(envName string) (value string, exists bool, err error) {
+	filePath, exists := os.LookupEnv(envName + "_FILE")
 	if exists {
-		data, err := os.ReadFile(path.Clean(strings.TrimSpace(envValue)))
-		if err == nil {
-			return strings.TrimSpace(string(data)), true
+		data, err := os.ReadFile(filepath.Clean(filePath))
+		if err != nil {
+			return "", false, fmt.Errorf("%w: %s_FILE: %w", ErrConfigNotFound, envName, err)
 		}
+
+		value = strings.TrimSuffix(string(data), "\n")
+		value = strings.TrimSuffix(value, "\r")
+
+		return value, true, nil
 	}
 
-	envValue, exists = os.LookupEnv(envName)
-	if exists {
-		return strings.TrimSpace(envValue), true
-	}
+	value, exists = os.LookupEnv(envName)
 
-	return "", false
+	return value, exists, nil
 }
