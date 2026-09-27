@@ -64,6 +64,9 @@ var byteSuffixes = map[string]float64{
 	"":  1,
 }
 
+// ParseByteSize parses a size such as "512", "1.5GB" or "4_096KiB". The number may use "." as the
+// decimal point and "_" to group digits; the optional suffix is an SI (k, M, G, …) or IEC (Ki, Mi,
+// Gi, …) unit, case-insensitive, with or without a trailing "B". An empty input is 0.
 func ParseByteSize(input string) (ByteSize, error) {
 	var (
 		numStr strings.Builder
@@ -76,7 +79,9 @@ func ParseByteSize(input string) (ByteSize, error) {
 
 	for i, char := range input {
 		if !unicode.IsDigit(char) && char != '.' {
-			if char == ',' || char == '_' {
+			// Only "_" is a digit separator. A comma is rejected rather than skipped: "1,5G" would
+			// otherwise silently become 15 GB for anyone writing a decimal comma.
+			if char == '_' {
 				continue
 			}
 

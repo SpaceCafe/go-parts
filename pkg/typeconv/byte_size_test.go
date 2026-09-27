@@ -143,6 +143,8 @@ func TestParseByteSize(t *testing.T) {
 		{name: "valid number only", input: "100", want: typeconv.ByteSize(100), wantErr: false},
 		{name: "valid underscored", input: "1_024KiB", want: typeconv.MiB, wantErr: false},
 		{name: "overflow", input: "20000EiB", want: 0, wantErr: true},
+		{name: "decimal comma", input: "1,5G", want: 0, wantErr: true},
+		{name: "thousands comma", input: "1,024KiB", want: 0, wantErr: true},
 	}
 
 	for _, tt := range tests {
