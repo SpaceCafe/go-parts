@@ -5,6 +5,12 @@ import (
 	"log/slog"
 )
 
+var (
+	_ Logger        = (*slog.Logger)(nil)
+	_ ContextLogger = (*slog.Logger)(nil)
+	_ FullLogger    = (*slog.Logger)(nil)
+)
+
 // Handler represents a logging handler that processes and formats log records for output or further handling.
 type Handler slog.Handler
 
@@ -38,8 +44,12 @@ type ContextLogger interface {
 	ErrorContext(ctx context.Context, msg string, args ...any)
 }
 
+// FullLogger combines Logger and ContextLogger with access to the underlying handler. It matches
+// *slog.Logger, so the standard logger can be passed wherever a FullLogger is required.
 type FullLogger interface {
 	Logger
 	ContextLogger
-	Handler
+
+	// Handler returns the handler that processes the records.
+	Handler() slog.Handler
 }
