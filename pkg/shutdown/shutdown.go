@@ -154,22 +154,31 @@ func (s *Shutdown) Track(service any) error {
 		return fmt.Errorf("%w: %T", ErrNotTrackable, service)
 	}
 
-	err := s.goTracked(func() {
-		<-s.runtimeCtx.Done()
-
-		err := trackable.Stop(s.shutdownCtx)
-		if err != nil {
-			s.Log.Error("shutdown: failed to stop service", "error", err)
-		}
-	})
+	// Reserve the wait group slot before Start, so a shutdown that begins during Start still waits
+	// for the service, but start the goroutine that calls Stop only after Start has returned: Stop
+	// must never run concurrently with Start.
+	err := s.addTracked()
 	if err != nil {
 		return err
 	}
 
 	err = trackable.Start(s.runtimeCtx)
 	if err != nil {
+		s.waitGroup.Done()
+
 		return fmt.Errorf("shutdown: starting service: %w", err)
 	}
+
+	go func() {
+		defer s.waitGroup.Done()
+
+		<-s.runtimeCtx.Done()
+
+		err := trackable.Stop(s.shutdownCtx)
+		if err != nil {
+			s.Log.Error("shutdown: failed to stop service", "error", err)
+		}
+	}()
 
 	s.Log.Debug("shutdown: starting service")
 
@@ -183,18 +192,10 @@ func (s *Shutdown) Wait() {
 	<-s.shutdownCtx.Done()
 }
 
-// cancelRuntime cancels the runtime context while holding mu, see goTracked.
-func (s *Shutdown) cancelRuntime() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.cancelRuntimeFn()
-}
-
-// goTracked runs task in a goroutine tracked by the wait group, unless the runtime context is already
-// cancelled. The check and the Add happen under mu, which cancelRuntime also holds, so a shutdown
-// cannot start waiting between them.
-func (s *Shutdown) goTracked(task func()) error {
+// addTracked adds one entry to the wait group, unless the runtime context is already cancelled.
+// The check and the Add happen under mu, which cancelRuntime also holds, so a shutdown cannot start
+// waiting between them. The caller must call waitGroup.Done exactly once.
+func (s *Shutdown) addTracked() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -202,7 +203,31 @@ func (s *Shutdown) goTracked(task func()) error {
 		return ErrContextCancelled
 	}
 
-	s.waitGroup.Go(task)
+	s.waitGroup.Add(1)
+
+	return nil
+}
+
+// cancelRuntime cancels the runtime context while holding mu, see addTracked.
+func (s *Shutdown) cancelRuntime() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.cancelRuntimeFn()
+}
+
+// goTracked runs task in a goroutine tracked by the wait group, see addTracked.
+func (s *Shutdown) goTracked(task func()) error {
+	err := s.addTracked()
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer s.waitGroup.Done()
+
+		task()
+	}()
 
 	return nil
 }
