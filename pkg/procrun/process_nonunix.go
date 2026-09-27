@@ -4,6 +4,7 @@ package procrun
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 )
 
@@ -38,16 +39,14 @@ func checkCapabilities(r *Runner) {
 		"Process's filesystem, network, and resource restrictions will not be applied!")
 }
 
-// getExitCode extracts and returns the appropriate exit code from the provided error.
-func getExitCode(err error) int {
-	if err == nil {
-		return 0
-	}
+// exitCode returns the exit code of a finished process.
+func exitCode(state *os.ProcessState) int {
+	return state.ExitCode()
+}
 
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode()
-	}
-
-	return 1
+// wasKilled reports whether the process ended unsuccessfully. Without signals, a process killed by
+// cmd.Cancel cannot be told apart from one that failed on its own, so the caller also checks the
+// context.
+func wasKilled(state *os.ProcessState) bool {
+	return !state.Success()
 }

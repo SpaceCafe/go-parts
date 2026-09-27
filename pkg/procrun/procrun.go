@@ -184,21 +184,34 @@ func (r *Runner) awaitResult(
 
 	r.Log.Debug("procrun: cmd execution completed", "duration", result.Duration, "error", err)
 
-	if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
-		result.Error = context.DeadlineExceeded
-		result.ExitCode = ExitCodeSigKill
-
-		return result, fmt.Errorf("%w: %s", ErrProcessTermination, result.Error.Error())
-	}
-
-	if err != nil {
+	state := execCmd.ProcessState
+	if state == nil {
 		result.Error = err
-		result.ExitCode = getExitCode(err)
+		result.ExitCode = 1
 
 		return result, fmt.Errorf("%w: %s", ErrProcessTermination, err.Error())
 	}
 
-	return result, nil
+	result.ExitCode = exitCode(state)
+	ctxErr := cmdCtx.Err()
+
+	// A process that exited successfully succeeded, even if the deadline passed while Wait
+	// returned. Wait then reports the context error, which is not a failure of the process.
+	if state.Success() && (err == nil || errors.Is(err, ctxErr)) {
+		return result, nil
+	}
+
+	// Report the context error only when the process was actually killed because of it, so a
+	// process that failed on its own right before the deadline keeps its real error.
+	if ctxErr != nil && wasKilled(state) {
+		result.Error = ctxErr
+
+		return result, fmt.Errorf("%w: %s", ErrProcessTermination, ctxErr.Error())
+	}
+
+	result.Error = err
+
+	return result, fmt.Errorf("%w: %s", ErrProcessTermination, err.Error())
 }
 
 // commandEnv returns the environment for cmd. An explicit Command.Env is used as is (an empty slice

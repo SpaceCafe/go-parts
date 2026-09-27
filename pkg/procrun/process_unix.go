@@ -3,7 +3,6 @@
 package procrun
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"strconv"
@@ -80,25 +79,23 @@ func checkCapabilities(runner *Runner) {
 	}
 }
 
-// getExitCode extracts and returns the appropriate exit code from the provided error,
-// with special handling for signals.
-func getExitCode(err error) int {
-	if err == nil {
-		return 0
+// exitCode returns the exit code of a finished process. A process killed by a signal reports
+// ExitCodeBase plus the signal number, like a shell does (137 for SIGKILL).
+func exitCode(state *os.ProcessState) int {
+	status, ok := state.Sys().(syscall.WaitStatus)
+	if ok && status.Signaled() {
+		return ExitCodeBase + int(status.Signal())
 	}
 
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		status, ok := exitErr.Sys().(syscall.WaitStatus)
+	return state.ExitCode()
+}
 
-		if ok && exitErr.ExitCode() == -1 && status.Signaled() {
-			return ExitCodeBase + int(status.Signal())
-		}
+// wasKilled reports whether the process was terminated by SIGKILL, which is what cmd.Cancel sends
+// on timeout or cancellation.
+func wasKilled(state *os.ProcessState) bool {
+	status, ok := state.Sys().(syscall.WaitStatus)
 
-		return exitErr.ExitCode()
-	}
-
-	return 1
+	return ok && status.Signaled() && status.Signal() == syscall.SIGKILL
 }
 
 // landlockArgs constructs a list of command-line arguments based on the filesystem restrictions defined in the Config.
