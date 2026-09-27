@@ -68,8 +68,10 @@ func (c *BasicAuthConfig) SetDefaults() {
 	c.UseTokens = false
 }
 
-// Validate ensures the credential collections and authenticator are non-nil, since a nil map or
-// slice signals an unconfigured struct rather than a deliberately empty one.
+// Validate ensures the credential collections and Authenticator are non-nil, since a nil map or
+// slice signals an unconfigured struct rather than a deliberately empty one. TokenAuthenticator
+// must be non-nil when UseTokens is enabled. Both authenticators are excluded from config files, so
+// a struct decoded without SetDefaults fails here instead of panicking on the first request.
 func (c *BasicAuthConfig) Validate() error {
 	return errors.Join(
 		validate.Validate(
@@ -84,7 +86,24 @@ func (c *BasicAuthConfig) Validate() error {
 			validate.NotNilSlice,
 			validate.Elements(validate.LengthMin[validate.Secret](minSecretLength)),
 		),
-		validate.Validate("authenticator", &c.Authenticator, validate.NotNilPointer),
+		validate.Validate("authenticator", c.Authenticator, func(value Authenticator) error {
+			if value == nil {
+				return validate.ErrNil
+			}
+
+			return nil
+		}),
+		validate.Validate(
+			"token authenticator",
+			c.TokenAuthenticator,
+			func(value TokenAuthenticator) error {
+				if c.UseTokens && value == nil {
+					return validate.ErrNil
+				}
+
+				return nil
+			},
+		),
 	)
 }
 

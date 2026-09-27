@@ -170,3 +170,51 @@ func TestBasicAuthConfig_Validate_RedactsSecrets(t *testing.T) {
 		assert.NotContains(t, err.Error(), secret)
 	}
 }
+
+func TestBasicAuthConfig_Validate_Authenticators(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		cfg     func(*middleware.BasicAuthConfig)
+		wantErr error
+		name    string
+	}{
+		{name: "defaults", cfg: func(*middleware.BasicAuthConfig) {}},
+		{
+			name:    "nil authenticator",
+			cfg:     func(cfg *middleware.BasicAuthConfig) { cfg.Authenticator = nil },
+			wantErr: validate.ErrNil,
+		},
+		{
+			name: "nil token authenticator without tokens",
+			cfg:  func(cfg *middleware.BasicAuthConfig) { cfg.TokenAuthenticator = nil },
+		},
+		{
+			name: "nil token authenticator with tokens",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenAuthenticator = nil
+				cfg.UseTokens = true
+			},
+			wantErr: validate.ErrNil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &middleware.BasicAuthConfig{}
+			cfg.SetDefaults()
+			tt.cfg(cfg)
+
+			err := cfg.Validate()
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
