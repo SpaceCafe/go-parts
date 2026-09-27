@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spacecafe/go-parts/pkg/httpserver"
 	"github.com/spacecafe/go-parts/pkg/httpserver/middleware"
 	"github.com/spacecafe/go-parts/pkg/validate"
 	"github.com/stretchr/testify/assert"
@@ -318,4 +319,35 @@ func TestValidatePasswords(t *testing.T) {
 	assert.False(t, middleware.ValidatePasswords("secret-pass", "secret-pass-longer"))
 	assert.True(t, middleware.ValidatePasswords(bcryptSecretPass, "secret-pass"))
 	assert.False(t, middleware.ValidatePasswords(bcryptSecretPass, "wrong-pass"))
+}
+
+func TestNilConfigs(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		middleware httpserver.Middleware
+		wantStatus int
+	}{
+		"BasicAuth rejects everything": {middleware.BasicAuth(nil), http.StatusUnauthorized},
+		"RateLimit applies defaults":   {middleware.RateLimit(t.Context(), nil), http.StatusOK},
+		"CORS applies defaults":        {middleware.CORS(nil), http.StatusOK},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			handler := tt.middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(
+				rec,
+				httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+			)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+		})
+	}
 }

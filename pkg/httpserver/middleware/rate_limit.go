@@ -99,8 +99,13 @@ func (c *RateLimitConfig) Validate() error {
 // A full bucket is answered with 429 Too Many Requests. A request that waits longer than
 // RequestTimeout for a concurrent slot is answered with 503 Service Unavailable. Both carry a
 // Retry-After header of one leak interval (at least one second). A request whose client disconnects
-// while waiting is dropped without a response.
+// while waiting is dropped without a response. A nil cfg applies the defaults.
 func RateLimit(ctx context.Context, cfg *RateLimitConfig) httpserver.Middleware {
+	if cfg == nil {
+		cfg = &RateLimitConfig{}
+		cfg.SetDefaults()
+	}
+
 	bucket := NewLeakyBucket(cfg.BucketCapacity)
 	bucket.StartLeaking(ctx, cfg.LeakRate, cfg.LeakInterval)
 

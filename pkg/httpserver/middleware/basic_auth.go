@@ -128,7 +128,14 @@ func (c *BasicAuthConfig) Validate() error {
 // Unauthenticated requests are aborted with a 401 and the challenges of every enabled scheme.
 // Place RateLimit before BasicAuth: bcrypt principals make every failed login deliberately slow, so
 // unthrottled clients can use them to exhaust the CPU.
+//
+// A nil cfg applies the defaults: no principals and no tokens, so every request is rejected.
 func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
+	if cfg == nil {
+		cfg = &BasicAuthConfig{}
+		cfg.SetDefaults()
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 			if cfg.UseTokens && cfg.TokenAuthenticator != nil {
