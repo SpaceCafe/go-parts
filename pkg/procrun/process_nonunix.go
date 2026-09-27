@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	// ExitCodeSigKill is the exit status code for SIGKILL, indicating the container received a SIGKILL
-	// by the underlying operating system.
-	ExitCodeSigKill = 0xC0000005
+	// ExitCodeSigKill is the exit code of a process killed through os.Process.Kill, which calls
+	// TerminateProcess with exit code 1 on Windows. Other platforms without signals behave alike.
+	ExitCodeSigKill = 1
 )
 
 // ErrStrictUnsupported is returned by Run when Restrictions.Strict is set on a platform without
