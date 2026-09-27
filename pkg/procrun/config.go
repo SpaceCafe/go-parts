@@ -99,7 +99,8 @@ type Config struct {
 	// Limits are the POSIX resource limits applied to a spawned process.
 	Limits Limits `json:"limits" yaml:"limits"`
 
-	// AutoCleanup controls whether a process's resources are released automatically once it exits.
+	// AutoCleanup controls whether the temporary working directory of a process is removed
+	// automatically once it exits. A directory supplied through Command.Dir is never removed.
 	AutoCleanup bool `json:"autoCleanup" yaml:"autoCleanup"`
 }
 

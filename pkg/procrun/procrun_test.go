@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -196,4 +197,31 @@ func TestRunner_Run_WithoutHelperBinaries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, res.ExitCode)
 	assert.Equal(t, "hello\n", stdout.String())
+}
+
+func TestRunner_AutoCleanup_KeepsCallerDir(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	cfg.AutoCleanup = true
+	require.NoError(t, cfg.Validate())
+
+	runner := procrun.New(cfg)
+
+	callerDir := t.TempDir()
+	keptFile := filepath.Join(callerDir, "keep.txt")
+	require.NoError(t, os.WriteFile(keptFile, []byte("data"), 0o600))
+
+	res, err := runner.Run(t.Context(), &procrun.Command{Path: "true", Dir: callerDir})
+	require.NoError(t, err)
+	assert.False(t, res.IsTempDir)
+	assert.FileExists(t, keptFile)
+
+	res, err = runner.Run(t.Context(), &procrun.Command{Path: "true"})
+	require.NoError(t, err)
+	assert.True(t, res.IsTempDir)
+	assert.NoDirExists(t, res.WorkDir)
 }

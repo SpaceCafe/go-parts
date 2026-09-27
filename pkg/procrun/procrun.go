@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"time"
 
@@ -76,34 +75,20 @@ func New(cfg *Config, opts ...Option) *Runner {
 	return obj
 }
 
-// Cleanup removes the working directory if it was auto-created.
+// Cleanup removes the working directory if procrun created it as a temporary directory. A directory
+// the caller supplied through Command.Dir is never touched.
 func (r *Runner) Cleanup(result *Result) error {
 	if result == nil {
 		return fmt.Errorf("%w: result cannot be nil", ErrCleanup)
 	}
 
-	if result.IsTempDir {
-		err := os.RemoveAll(result.WorkDir)
-		if err != nil {
-			return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
-		}
-
+	if !result.IsTempDir {
 		return nil
 	}
 
-	// Remove all content in the directory and preserve the directory.
-	entries, err := os.ReadDir(result.WorkDir)
+	err := os.RemoveAll(result.WorkDir)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
-	}
-
-	for _, entry := range entries {
-		path := filepath.Join(result.WorkDir, entry.Name())
-
-		err = os.RemoveAll(path)
-		if err != nil {
-			return fmt.Errorf("%w: %s", ErrCleanup, err.Error())
-		}
 	}
 
 	return nil
