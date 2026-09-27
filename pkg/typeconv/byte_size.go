@@ -100,8 +100,9 @@ func ParseByteSize(input string) (ByteSize, error) {
 	if multiplier, ok := byteSuffixes[suffix]; ok {
 		resultFloat := num * multiplier
 
-		// Check for float64 and uint64 overflow.
-		if math.IsInf(resultFloat, 0) || math.IsNaN(resultFloat) || resultFloat > math.MaxUint64 {
+		// Check for float64 and uint64 overflow. float64(math.MaxUint64) rounds up to 2^64, which does
+		// not fit, so the comparison must be >=.
+		if math.IsInf(resultFloat, 0) || math.IsNaN(resultFloat) || resultFloat >= math.MaxUint64 {
 			return 0, fmt.Errorf("%w: byte size overflows", ErrInvalidValue)
 		}
 

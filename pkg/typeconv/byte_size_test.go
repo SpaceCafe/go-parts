@@ -161,3 +161,16 @@ func TestParseByteSize(t *testing.T) {
 		})
 	}
 }
+
+func TestParseByteSize_Overflow(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"16EiB", "18446744073709551616", "17EiB"} {
+		_, err := typeconv.ParseByteSize(input)
+		require.ErrorIs(t, err, typeconv.ErrInvalidValue, input)
+	}
+
+	size, err := typeconv.ParseByteSize("15EiB")
+	require.NoError(t, err)
+	require.Equal(t, 15*typeconv.EiB, size)
+}
