@@ -11,6 +11,7 @@ var (
 	ErrPathExist    = errors.New("validate: path must not exist")
 	ErrPathNotExist = errors.New("validate: path must exist")
 	ErrNotPerm      = errors.New("validate: path must have permissions")
+	ErrPathCheck    = errors.New("validate: cannot check path")
 
 	ErrNotDir  = errors.New("validate: path must be a directory")
 	ErrNotFile = errors.New("validate: path must be a regular file")
@@ -153,7 +154,9 @@ func PathNotExist[T ~string](value T) error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: %s", ErrPathExist, err.Error())
+	// Any other error (permission denied, I/O failure) says nothing about whether the path exists,
+	// so it is reported as its own failure rather than as ErrPathExist.
+	return fmt.Errorf("%w: %w", ErrPathCheck, err)
 }
 
 // permBits returns the mode of info in the octal layout `chmod` uses, so that a caller can express

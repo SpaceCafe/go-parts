@@ -1,9 +1,11 @@
 package validate_test
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 
@@ -686,6 +688,21 @@ func TestPathNotExist(t *testing.T) {
 			},
 			wantErr: validate.ErrPathExist,
 		},
+		{
+			name: "parent directory not searchable",
+			setup: func(t *testing.T) string {
+				t.Helper()
+
+				if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+					t.Skip("directory permissions are not enforced")
+				}
+
+				parent := mkDir(t, 0o000)
+
+				return filepath.Join(parent, "child")
+			},
+			wantErr: validate.ErrPathCheck,
+		},
 	}
 
 	for _, tt := range tests {
@@ -693,6 +710,11 @@ func TestPathNotExist(t *testing.T) {
 			t.Parallel()
 
 			err := validate.PathNotExist(tt.setup(t))
+			if errors.Is(tt.wantErr, validate.ErrPathCheck) {
+				require.NotErrorIs(t, err, validate.ErrPathExist)
+				require.ErrorIs(t, err, fs.ErrPermission)
+			}
+
 			requireErr(t, tt.wantErr, err)
 		})
 	}
