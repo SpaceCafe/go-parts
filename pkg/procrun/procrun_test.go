@@ -353,3 +353,15 @@ func TestRunner_Run_DoesNotLogEnv(t *testing.T) {
 		assert.NotContains(t, line, "hunter2")
 	}
 }
+
+func TestConfig_Validate_PathListSeparator(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	cfg.Restrictions.RODirs = []string{"/data/a" + string(os.PathListSeparator) + "b"}
+
+	require.ErrorIs(t, cfg.Validate(), procrun.ErrPathListSeparator)
+}

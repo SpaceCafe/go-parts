@@ -2,7 +2,9 @@ package procrun
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
@@ -15,7 +17,16 @@ const (
 	DefaultPrlimitBin  = "prlimit"
 )
 
-var _ config.Defaultable = (*Config)(nil)
+var (
+	_ config.Defaultable = (*Config)(nil)
+	_ config.Validatable = (*Config)(nil)
+)
+
+// ErrPathListSeparator is returned for a restriction path that contains the path list separator.
+// landlock-restrict receives each list joined by that separator, so such a path would be split.
+var ErrPathListSeparator = errors.New(
+	"procrun: restriction path must not contain the path list separator",
+)
 
 var ErrStrictWithoutLandlock = errors.New("procrun: strict mode requires a landlock bin")
 
@@ -98,11 +109,12 @@ type Restrictions struct {
 // applied to spawned processes, and whether their resources are cleaned up automatically.
 type Config struct {
 	// LandlockBin is the path to the landlock-restrict binary used to apply filesystem
-	// restrictions. Resolved via exec.LookPath during Validate.
+	// restrictions. Validate resolves it via exec.LookPath and overwrites the field with the
+	// absolute path, so New uses exactly the binary that was checked.
 	LandlockBin string `json:"landlockBin" yaml:"landlockBin"`
 
-	// PrlimitBin is the path to the prlimit binary used to apply resource limits. Resolved via
-	// exec.LookPath during Validate.
+	// PrlimitBin is the path to the prlimit binary used to apply resource limits. Validate resolves
+	// it via exec.LookPath and overwrites the field with the absolute path.
 	PrlimitBin string `json:"prlimitBin" yaml:"prlimitBin"`
 
 	// Restrictions are the filesystem and network allowlists applied to a spawned process.
@@ -139,6 +151,8 @@ func (c *Config) SetDefaults() {
 	c.InheritEnv = false
 }
 
+// Validate checks the restrictions and resolves LandlockBin and PrlimitBin to absolute paths, writing
+// them back into the config.
 func (c *Config) Validate() error {
 	return errors.Join(
 		validate.Validate("landlock bin", c.LandlockBin, lookPath(&c.LandlockBin)),
@@ -166,27 +180,36 @@ func (c *Config) Validate() error {
 			"ro dirs restrictions",
 			c.Restrictions.RODirs,
 			validate.NotNilSlice,
-			validate.Elements[string](validate.NotEmpty),
+			validate.Elements[string](validate.NotEmpty, noPathListSeparator),
 		),
 		validate.Validate(
 			"ro files restrictions",
 			c.Restrictions.ROFiles,
 			validate.NotNilSlice,
-			validate.Elements[string](validate.NotEmpty),
+			validate.Elements[string](validate.NotEmpty, noPathListSeparator),
 		),
 		validate.Validate(
 			"rw dirs restrictions",
 			c.Restrictions.RWDirs,
 			validate.NotNilSlice,
-			validate.Elements[string](validate.NotEmpty),
+			validate.Elements[string](validate.NotEmpty, noPathListSeparator),
 		),
 		validate.Validate(
 			"rw files restrictions",
 			c.Restrictions.RWFiles,
 			validate.NotNilSlice,
-			validate.Elements[string](validate.NotEmpty),
+			validate.Elements[string](validate.NotEmpty, noPathListSeparator),
 		),
 	)
+}
+
+// noPathListSeparator rejects a path containing os.PathListSeparator.
+func noPathListSeparator(value string) error {
+	if strings.ContainsRune(value, os.PathListSeparator) {
+		return ErrPathListSeparator
+	}
+
+	return nil
 }
 
 // lookPath returns a validation function that resolves value to an absolute
