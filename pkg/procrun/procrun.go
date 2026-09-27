@@ -111,7 +111,8 @@ func (r *Runner) Cleanup(result *Result) error {
 
 // Run executes the cmd with configured resource limits.
 func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
-	r.Log.Debug("procrun: executing cmd", "cmd", cmd)
+	// Log only what identifies the command: Env often carries secrets.
+	r.Log.Debug("procrun: executing cmd", "path", cmd.Path, "args", cmd.Args, "dir", cmd.Dir)
 
 	if cmd.Path == "" {
 		return nil, ErrInvalidCommandPath

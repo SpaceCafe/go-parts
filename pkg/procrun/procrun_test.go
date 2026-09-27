@@ -3,6 +3,7 @@ package procrun_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -316,4 +317,39 @@ func TestConfig_Validate_StrictRequiresLandlock(t *testing.T) {
 	cfg.Restrictions.Strict = true
 
 	require.ErrorIs(t, cfg.Validate(), procrun.ErrStrictWithoutLandlock)
+}
+
+// recordingLogger keeps every Debug line as text.
+type recordingLogger struct {
+	lines []string
+}
+
+func (l *recordingLogger) Debug(msg string, args ...any) {
+	l.lines = append(l.lines, fmt.Sprint(append([]any{msg}, args...)...))
+}
+
+func (l *recordingLogger) Error(string, ...any) {}
+func (l *recordingLogger) Info(string, ...any)  {}
+func (l *recordingLogger) Warn(string, ...any)  {}
+
+func TestRunner_Run_DoesNotLogEnv(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	require.NoError(t, cfg.Validate())
+
+	logger := &recordingLogger{}
+
+	_, err := procrun.New(cfg, procrun.WithLogger(logger)).Run(t.Context(), &procrun.Command{
+		Path: "true",
+		Env:  []string{"DB_PASSWORD=hunter2"},
+	})
+	require.NoError(t, err)
+
+	for _, line := range logger.lines {
+		assert.NotContains(t, line, "hunter2")
+	}
 }
