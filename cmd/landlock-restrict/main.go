@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -42,8 +43,8 @@ const (
 var errUnsupportedABI = errors.New("kernel Landlock ABI too old")
 
 // listSeparator separates the entries within a single flag value, following the $PATH convention.
-// A path containing the separator therefore cannot be expressed, which is the trade-off $PATH makes
-// as well.
+// splitList splits on it with filepath.SplitList, so a path containing it cannot be expressed on
+// Unix, which is the trade-off $PATH makes as well.
 const listSeparator = string(os.PathListSeparator)
 
 // options holds the restrictions and the command parsed from the arguments.
@@ -332,10 +333,12 @@ func parseFlags(args []string) *options {
 	return opts
 }
 
-// splitList splits a flag value into its entries. Empty entries are dropped, so an empty value, a
-// trailing separator and a run of separators all stay harmless.
+// splitList splits a flag value into its entries with filepath.SplitList, the same rules the
+// platform applies to $PATH: no escaping on Unix, so a path containing the separator cannot be
+// expressed; on Windows a quoted entry may contain it. Empty entries are dropped, so an empty value,
+// a trailing separator and a run of separators all stay harmless.
 func splitList(value string) []string {
-	fields := strings.Split(value, listSeparator)
+	fields := filepath.SplitList(value)
 	entries := make([]string, 0, len(fields))
 
 	for _, entry := range fields {
@@ -356,7 +359,8 @@ func usage(flags *flag.FlagSet) {
 	)
 	_, _ = fmt.Fprintf(
 		flags.Output(),
-		"Flags may be repeated or take a %q separated list. A TCP flag that is never\n"+
+		"Flags may be repeated or take a %q separated list, split like $PATH, so a\n"+
+			"path containing the separator is not supported. A TCP flag that is never\n"+
 			"given stays unrestricted; giving it with an empty value denies it altogether.\n"+
 			"The path flags act together: giving any of them restricts all filesystem\n"+
 			"access to the listed paths.\n\n",

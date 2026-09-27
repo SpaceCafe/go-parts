@@ -1,3 +1,5 @@
+//go:build unix
+
 package main
 
 import (
@@ -53,5 +55,21 @@ func TestNewNetConfig(t *testing.T) {
 				assert.NotContains(t, config.String(), never)
 			}
 		})
+	}
+}
+
+func TestSplitList(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string][]string{
+		"":           {},
+		"/usr":       {"/usr"},
+		"/usr:/lib":  {"/usr", "/lib"},
+		"/usr::/lib": {"/usr", "/lib"},
+		"/usr:":      {"/usr"},
+	}
+
+	for value, want := range tests {
+		assert.Equal(t, want, splitList(value), value)
 	}
 }
