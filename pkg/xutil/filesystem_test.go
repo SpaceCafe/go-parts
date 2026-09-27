@@ -3,6 +3,7 @@ package xutil_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/xutil"
@@ -98,4 +99,40 @@ func TestCopyFile(t *testing.T) {
 			assert.Equal(t, want, got)
 		})
 	}
+}
+
+func TestCopyFile_Permissions(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits are not supported")
+	}
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "secret")
+	require.NoError(t, os.WriteFile(src, []byte("s3cr3t"), 0o600))
+
+	t.Run("new destination", func(t *testing.T) {
+		t.Parallel()
+
+		dest := filepath.Join(t.TempDir(), "copy")
+		require.NoError(t, xutil.CopyFile(src, dest))
+
+		info, err := os.Stat(dest)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	})
+
+	t.Run("existing world-readable destination", func(t *testing.T) {
+		t.Parallel()
+
+		dest := filepath.Join(t.TempDir(), "copy")
+		//nolint:gosec // The test needs a world-readable file to prove it is tightened.
+		require.NoError(t, os.WriteFile(dest, []byte("old"), 0o644))
+		require.NoError(t, xutil.CopyFile(src, dest))
+
+		info, err := os.Stat(dest)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	})
 }
