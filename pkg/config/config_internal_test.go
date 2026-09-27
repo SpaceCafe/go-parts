@@ -18,7 +18,7 @@ func TestFindConfigSource(t *testing.T) {
 	require.NoError(t, os.WriteFile("config.json", []byte(`{}`), 0o600))
 
 	t.Run("explicit path that does not exist", func(t *testing.T) {
-		_, err := findConfigSource("app", filepath.Join(t.TempDir(), "missing.json"))
+		_, err := findConfigSource("app", filepath.Join(t.TempDir(), "missing.json"), false)
 		require.ErrorIs(t, err, ErrConfigNotFound)
 		require.ErrorIs(t, err, fs.ErrNotExist)
 	})
@@ -27,13 +27,13 @@ func TestFindConfigSource(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "explicit.json")
 		require.NoError(t, os.WriteFile(path, []byte(`{}`), 0o600))
 
-		source, err := findConfigSource("app", path)
+		source, err := findConfigSource("app", path, false)
 		require.NoError(t, err)
 		assert.Equal(t, &JSONSource{Path: path}, source)
 	})
 
 	t.Run("search list without explicit path", func(t *testing.T) {
-		source, err := findConfigSource("app", "")
+		source, err := findConfigSource("app", "", false)
 		require.NoError(t, err)
 		assert.Equal(t, &JSONSource{Path: "config.json"}, source)
 	})
@@ -47,7 +47,7 @@ func TestFindConfigSource(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod("config", 0o700) })
 		require.NoError(t, os.Remove("config.json"))
 
-		_, err := findConfigSource("app", "")
+		_, err := findConfigSource("app", "", false)
 		require.ErrorIs(t, err, ErrConfigNotFound)
 		require.ErrorIs(t, err, fs.ErrPermission)
 	})

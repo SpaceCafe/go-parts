@@ -55,7 +55,12 @@ type pointerDefaultable[T any] interface {
 //
 // An empty envPrefix is allowed, but fields whose derived names collide with common system
 // variables are rejected, see EnvSource.
-func AutoLoad(target Validatable, name, envPrefix string) error {
+func AutoLoad(target Validatable, name, envPrefix string, opts ...Option) error {
+	settings := &options{}
+	for _, opt := range opts {
+		opt(settings)
+	}
+
 	registerAutoLoadFlags()
 
 	args, err := parseAutoLoadArgs(os.Args[1:])
@@ -74,7 +79,7 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 
 	sources := []Source{}
 
-	source, err := findConfigSource(name, args.configPath)
+	source, err := findConfigSource(name, args.configPath, settings.allowUnknownFields)
 	if err != nil {
 		return err
 	}
@@ -108,7 +113,7 @@ func GenerateTemplate(target Validatable, filename, envPrefix string) (err error
 	if strings.HasSuffix(filename, ".env") {
 		source = &EnvSource{Prefix: envPrefix}
 	} else {
-		source, err = sourceFromSuffix(filename)
+		source, err = sourceFromSuffix(filename, false)
 		if err != nil {
 			return err
 		}
@@ -189,14 +194,14 @@ func New[T any, PT pointerDefaultable[T]]() *T {
 // without error means no file was found.
 //
 //nolint:ireturn // Returns whichever Source matches the file suffix.
-func findConfigSource(name, configPath string) (Source, error) {
+func findConfigSource(name, configPath string, allowUnknownFields bool) (Source, error) {
 	if configPath != "" {
 		_, err := os.Stat(configPath)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrConfigNotFound, err)
 		}
 
-		return sourceFromSuffix(configPath)
+		return sourceFromSuffix(configPath, allowUnknownFields)
 	}
 
 	for _, filePath := range configPaths(name) {
@@ -209,7 +214,7 @@ func findConfigSource(name, configPath string) (Source, error) {
 			return nil, fmt.Errorf("%w: %w", ErrConfigNotFound, err)
 		}
 
-		return sourceFromSuffix(filePath)
+		return sourceFromSuffix(filePath, allowUnknownFields)
 	}
 
 	return nil, nil //nolint:nilnil // No config file is a valid outcome; env vars still apply.
@@ -256,13 +261,13 @@ func configPaths(name string) []string {
 // Returns an appropriate Source or an error if the file format is unsupported.
 //
 //nolint:ireturn // Factory function must return an interface type to support multiple source implementations.
-func sourceFromSuffix(filename string) (Source, error) {
+func sourceFromSuffix(filename string, allowUnknownFields bool) (Source, error) {
 	if strings.HasSuffix(filename, ".json") {
-		return &JSONSource{Path: filename}, nil
+		return &JSONSource{Path: filename, AllowUnknownFields: allowUnknownFields}, nil
 	}
 
 	if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml") {
-		return newYAMLSource(filename)
+		return newYAMLSource(filename, allowUnknownFields)
 	}
 
 	return nil, fmt.Errorf("%w: unsupported file format: %s", ErrInvalidConfig, filename)

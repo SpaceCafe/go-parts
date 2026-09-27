@@ -29,3 +29,12 @@ func TestYAMLSource_Load(t *testing.T) {
 		}
 	}, validFile, invalidFile)
 }
+
+func TestYAMLSource_Load_UnknownFields(t *testing.T) {
+	t.Parallel()
+
+	testUnknownFields(t, "config.yaml", "name: app\nprot: 8080\n",
+		func(path string, allow bool) config.Source {
+			return config.YAMLSource{Path: path, AllowUnknownFields: allow}
+		})
+}

@@ -316,3 +316,19 @@ func TestLoad_ValidationErrorKeepsChain(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrValidation)
 	require.ErrorIs(t, err, errInvalidPort)
 }
+
+//nolint:paralleltest // Changes the working directory.
+func TestAutoLoad_AllowUnknownFields(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	require.NoError(
+		t,
+		os.WriteFile("config.json", []byte(`{"name": "app", "port": 8080, "extra": 1}`), 0o600),
+	)
+
+	require.ErrorIs(t, config.AutoLoad(&MockConfig{}, "test-app", "APP"), config.ErrInvalidConfig)
+
+	target := &MockConfig{}
+	require.NoError(t, config.AutoLoad(target, "test-app", "APP", config.WithAllowUnknownFields()))
+	assert.Equal(t, "app", target.Name)
+}

@@ -27,3 +27,36 @@ func TestJSONSource_Load(t *testing.T) {
 		}
 	}, validFile, invalidFile)
 }
+
+func TestJSONSource_Load_UnknownFields(t *testing.T) {
+	t.Parallel()
+
+	testUnknownFields(t, "config.json", `{"name": "app", "prot": 8080}`,
+		func(path string, allow bool) config.Source {
+			return config.JSONSource{Path: path, AllowUnknownFields: allow}
+		})
+}
+
+// testUnknownFields checks that the source built by newSource rejects the misspelled key "prot" in
+// content by default and accepts it with allow set.
+func testUnknownFields(
+	t *testing.T,
+	filename, content string,
+	newSource func(path string, allow bool) config.Source,
+) {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), filename)
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	var strict MockConfig
+
+	err := newSource(path, false).Load(&strict)
+	require.ErrorIs(t, err, config.ErrInvalidConfig)
+	require.ErrorContains(t, err, "prot")
+
+	var lenient MockConfig
+
+	require.NoError(t, newSource(path, true).Load(&lenient))
+	require.Equal(t, "app", lenient.Name)
+}
