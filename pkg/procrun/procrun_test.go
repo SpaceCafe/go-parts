@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,4 +251,69 @@ func TestRunner_Run_TimeoutKillsProcessGroup(t *testing.T) {
 	require.ErrorIs(t, err, procrun.ErrProcessTermination)
 	require.NotNil(t, res)
 	assert.Less(t, time.Since(begin), procrun.WaitDelay, "Run must not wait for the grandchild")
+}
+
+//nolint:paralleltest // Uses t.Setenv.
+func TestRunner_Run_Env(t *testing.T) {
+	t.Setenv("PROCRUN_TEST_SECRET", "hunter2")
+	t.Setenv("LANG", "C.UTF-8")
+
+	tests := []struct {
+		name       string
+		wantExact  string
+		env        []string
+		inheritEnv bool
+		wantSecret bool
+		wantLang   bool
+	}{
+		{name: "nil env gets minimal set", wantLang: true},
+		{name: "inherit env", inheritEnv: true, wantSecret: true, wantLang: true},
+		{name: "explicit env", env: []string{"A=1"}, wantExact: "A=1\n"},
+		{name: "empty env", env: []string{}, wantExact: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &procrun.Config{}
+			cfg.SetDefaults()
+			cfg.LandlockBin = ""
+			cfg.PrlimitBin = ""
+			cfg.InheritEnv = tt.inheritEnv
+			require.NoError(t, cfg.Validate())
+
+			var stdout bytes.Buffer
+
+			_, err := procrun.New(cfg).Run(t.Context(), &procrun.Command{
+				Path:   "/usr/bin/env",
+				Env:    tt.env,
+				Stdout: &stdout,
+			})
+			require.NoError(t, err)
+
+			if tt.wantExact != "" || tt.env != nil {
+				assert.Equal(t, tt.wantExact, stdout.String())
+
+				return
+			}
+
+			assert.Equal(
+				t,
+				tt.wantSecret,
+				strings.Contains(stdout.String(), "PROCRUN_TEST_SECRET="),
+			)
+			assert.Equal(t, tt.wantLang, strings.Contains(stdout.String(), "LANG=C.UTF-8"))
+		})
+	}
+}
+
+func TestConfig_Validate_StrictRequiresLandlock(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	cfg.Restrictions.Strict = true
+
+	require.ErrorIs(t, cfg.Validate(), procrun.ErrStrictWithoutLandlock)
 }

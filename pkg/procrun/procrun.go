@@ -26,6 +26,13 @@ var (
 // exited. It stops a grandchild that keeps the pipes open from blocking Run indefinitely.
 const WaitDelay = 5 * time.Second
 
+// MinimalEnv lists the variables a command inherits from the current process when Command.Env is
+// nil and Config.InheritEnv is false. They let ordinary tools find binaries, locale data, the time
+// zone and a temp directory without exposing the host service's secrets.
+//
+//nolint:gochecknoglobals // Read-only list of variable names.
+var MinimalEnv = []string{"PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR"}
+
 // Command describes the program to execute and its execution environment.
 type Command struct {
 	Stdin          io.Reader
@@ -53,6 +60,10 @@ type Runner struct {
 	// Log is the logger instance.
 	Log log.Logger
 
+	// setupErr is the error from applying the sandbox arguments. Run refuses to start processes
+	// while it is set, so a sandbox that cannot be set up never degrades silently.
+	setupErr error
+
 	// cfg holds configuration settings.
 	cfg *Config
 
@@ -69,9 +80,9 @@ func New(cfg *Config, opts ...Option) *Runner {
 		opt(obj)
 	}
 
-	err := applyArguments(obj)
-	if err != nil {
-		obj.Log.Error("failed to apply arguments", "error", err)
+	obj.setupErr = applyArguments(obj)
+	if obj.setupErr != nil {
+		obj.Log.Error("procrun: failed to apply arguments", "error", obj.setupErr)
 	}
 
 	checkCapabilities(obj)
@@ -104,6 +115,10 @@ func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
 
 	if cmd.Path == "" {
 		return nil, ErrInvalidCommandPath
+	}
+
+	if r.setupErr != nil {
+		return nil, fmt.Errorf("%w: %w", ErrProcessStart, r.setupErr)
 	}
 
 	result, err := r.setupWorkDir(cmd)
@@ -185,6 +200,29 @@ func (r *Runner) awaitResult(
 	return result, nil
 }
 
+// commandEnv returns the environment for cmd. An explicit Command.Env is used as is (an empty slice
+// means no variables). A nil Env inherits everything with Config.InheritEnv, otherwise only the
+// MinimalEnv variables that are set.
+func (r *Runner) commandEnv(cmd *Command) []string {
+	if cmd.Env != nil {
+		return cmd.Env
+	}
+
+	if r.cfg.InheritEnv {
+		return nil
+	}
+
+	env := make([]string, 0, len(MinimalEnv))
+
+	for _, key := range MinimalEnv {
+		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
+	}
+
+	return env
+}
+
 // createExecCommand creates the *exec.Cmd with all I/O and env wired up.
 func (r *Runner) createExecCommand(ctx context.Context, cmd *Command, workDir string) *exec.Cmd {
 	args := append(slices.Clone(r.args), cmd.Path)
@@ -193,7 +231,7 @@ func (r *Runner) createExecCommand(ctx context.Context, cmd *Command, workDir st
 	//nolint:gosec // G204: cmd.Path and cmd.Args are intentionally dynamic, this package is a process runner by design.
 	execCmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	execCmd.Dir = workDir
-	execCmd.Env = cmd.Env
+	execCmd.Env = r.commandEnv(cmd)
 	execCmd.Stdin = cmd.Stdin
 	execCmd.Stdout = cmd.Stdout
 	execCmd.Stderr = cmd.Stderr

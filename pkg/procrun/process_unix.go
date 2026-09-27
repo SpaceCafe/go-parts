@@ -65,6 +65,11 @@ func checkCapabilities(runner *Runner) {
 			"Process's filesystem and network restrictions will not be applied! Please check or ignore if intended.")
 	}
 
+	if runner.cfg.LandlockBin != "" && !runner.cfg.Restrictions.Strict {
+		runner.Log.Warn("procrun: landlock-restrict runs in best-effort mode. " +
+			"On a kernel without Landlock the process runs unrestricted! Set Restrictions.Strict to fail instead.")
+	}
+
 	if runner.cfg.PrlimitBin == "" {
 		runner.Log.Warn("procrun: prlimit binary not found. " +
 			"Process's resource limits will not be applied! Please check or ignore if intended.")
@@ -112,6 +117,10 @@ func landlockArgs(cfg *Config) []string {
 
 	if cfg.Restrictions.RestrictConnectTCP {
 		args = append(args, "-tcp.connect="+joinPorts(cfg.Restrictions.ConnectTCP))
+	}
+
+	if cfg.Restrictions.Strict {
+		args = append(args, "-strict")
 	}
 
 	return append(args, "--")

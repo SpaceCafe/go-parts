@@ -17,6 +17,8 @@ const (
 
 var _ config.Defaultable = (*Config)(nil)
 
+var ErrStrictWithoutLandlock = errors.New("procrun: strict mode requires a landlock bin")
+
 // Limits defines resource constraints to apply to a process.
 // All fields map to POSIX resource limits set via prlimit(2) on the spawned process.
 type Limits struct {
@@ -77,6 +79,11 @@ type Restrictions struct {
 	// ports in BindTCP, so an empty list denies listening altogether.
 	RestrictBindTCP bool `json:"restrictBindTCP" yaml:"restrictBindTCP"`
 
+	// Strict makes landlock-restrict fail instead of running the command unrestricted when the
+	// kernel cannot enforce every requested restriction (for example without Landlock support).
+	// It requires LandlockBin, and on platforms without Landlock every Run fails.
+	Strict bool `json:"strict" yaml:"strict"`
+
 	// RestrictConnectTCP gates ConnectTCP. False leaves outgoing connections unrestricted, true
 	// confines them to the ports in ConnectTCP, so an empty list denies them altogether.
 	RestrictConnectTCP bool `json:"restrictConnectTCP" yaml:"restrictConnectTCP"`
@@ -99,6 +106,11 @@ type Config struct {
 	// Limits are the POSIX resource limits applied to a spawned process.
 	Limits Limits `json:"limits" yaml:"limits"`
 
+	// InheritEnv passes the full environment of the current process to commands whose Command.Env
+	// is nil. By default they only get the variables in MinimalEnv, so secrets of the host service
+	// (database passwords, API tokens) do not reach the command.
+	InheritEnv bool `json:"inheritEnv" yaml:"inheritEnv"`
+
 	// AutoCleanup controls whether the temporary working directory of a process is removed
 	// automatically once it exits. A directory supplied through Command.Dir is never removed.
 	AutoCleanup bool `json:"autoCleanup" yaml:"autoCleanup"`
@@ -117,12 +129,22 @@ func (c *Config) SetDefaults() {
 
 	c.Restrictions.RestrictBindTCP = false
 	c.Restrictions.RestrictConnectTCP = false
+	c.Restrictions.Strict = false
+
+	c.InheritEnv = false
 }
 
 func (c *Config) Validate() error {
 	return errors.Join(
 		validate.Validate("landlock bin", c.LandlockBin, lookPath(&c.LandlockBin)),
 		validate.Validate("prlimit bin", c.PrlimitBin, lookPath(&c.PrlimitBin)),
+		validate.Validate("strict", c.Restrictions.Strict, func(strict bool) error {
+			if strict && c.LandlockBin == "" {
+				return ErrStrictWithoutLandlock
+			}
+
+			return nil
+		}),
 		validate.Validate(
 			"bind tcp restrictions",
 			c.Restrictions.BindTCP,
