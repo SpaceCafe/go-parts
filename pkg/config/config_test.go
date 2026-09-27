@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"flag"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -122,6 +123,11 @@ func TestLoad(t *testing.T) {
 	err = config.AutoLoad(target, "test-app", "APP")
 	require.NoError(t, err)
 	assert.EqualExportedValues(t, &MockConfig{Name: "test-app", Port: 9090}, target)
+
+	// A second call must not panic on redefined flags.
+	require.NoError(t, config.AutoLoad(&MockConfig{}, "test-app", "APP"))
+	require.NotNil(t, flag.Lookup("config"))
+	require.NotNil(t, flag.Lookup("generate-template"))
 }
 
 func TestNew(t *testing.T) {

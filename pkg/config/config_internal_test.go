@@ -52,3 +52,60 @@ func TestFindConfigSource(t *testing.T) {
 		require.ErrorIs(t, err, fs.ErrPermission)
 	})
 }
+
+func TestParseAutoLoadArgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		wantErr error
+		name    string
+		args    []string
+		want    autoLoadArgs
+	}{
+		{name: "no args"},
+		{
+			name: "config with space and app flags",
+			args: []string{"-port", "9000", "--config", "prod.json", "-v"},
+			want: autoLoadArgs{configPath: "prod.json"},
+		},
+		{
+			name: "config with equals",
+			args: []string{"-config=prod.json"},
+			want: autoLoadArgs{configPath: "prod.json"},
+		},
+		{name: "config without value", args: []string{"--config"}, wantErr: ErrInvalidArgs},
+		{
+			name: "generate template with default path",
+			args: []string{"--generate-template", "--config", "prod.json"},
+			want: autoLoadArgs{
+				configPath:       "prod.json",
+				generateTemplate: true,
+				templatePath:     defaultTemplatePath,
+			},
+		},
+		{
+			name: "generate template with path",
+			args: []string{"-generate-template=out.yaml"},
+			want: autoLoadArgs{generateTemplate: true, templatePath: "out.yaml"},
+		},
+		{name: "generate template false", args: []string{"-generate-template=false"}},
+		{name: "stops at double dash", args: []string{"--", "--config", "x.json"}},
+		{name: "positional argument is ignored", args: []string{"config"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseAutoLoadArgs(tt.args)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

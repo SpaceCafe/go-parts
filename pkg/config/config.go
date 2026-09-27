@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -44,20 +43,24 @@ type pointerDefaultable[T any] interface {
 	Defaultable
 }
 
+// AutoLoad loads target from the first config file found and from environment variables with
+// envPrefix, then validates it. It reads its options from os.Args without parsing flag.CommandLine:
+//
+//   - -config <path> names the config file; it must exist.
+//   - -generate-template[=<path>] writes a template (default config.tmpl.json) and exits.
+//
+// Both flags are also registered on flag.CommandLine unless already defined, so an application that
+// calls flag.Parse itself (before or after AutoLoad) accepts them. AutoLoad never calls flag.Parse.
 func AutoLoad(target Validatable, name, envPrefix string) error {
-	var sources []Source
+	registerAutoLoadFlags()
 
-	configPath := flag.String("config", "", "path to config file")
-	isGenerateTemplate := flag.Bool(
-		"generate-template",
-		false,
-		"generate a configuration template file",
-	)
+	args, err := parseAutoLoadArgs(os.Args[1:])
+	if err != nil {
+		return err
+	}
 
-	flag.Parse()
-
-	if *isGenerateTemplate {
-		err := GenerateTemplate(target, *configPath, envPrefix)
+	if args.generateTemplate {
+		err = GenerateTemplate(target, args.templatePath, envPrefix)
 		if err != nil {
 			return err
 		}
@@ -65,7 +68,9 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 		os.Exit(0)
 	}
 
-	source, err := findConfigSource(name, *configPath)
+	sources := []Source{}
+
+	source, err := findConfigSource(name, args.configPath)
 	if err != nil {
 		return err
 	}
@@ -90,7 +95,7 @@ func GenerateTemplate(target Validatable, filename, envPrefix string) (err error
 	}
 
 	if filename == "" {
-		filename = "config.tmpl.json"
+		filename = defaultTemplatePath
 	}
 
 	// Pick the source before touching the file, so an unsupported suffix leaves nothing behind.
