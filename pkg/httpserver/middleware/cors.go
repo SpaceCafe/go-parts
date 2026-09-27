@@ -19,6 +19,9 @@ var (
 	ErrMissingAllowedOrigins = errors.New("CORS: allowed origins cannot be empty")
 	ErrMissingAllowedMethods = errors.New("CORS: allowed methods cannot be empty")
 	ErrInvalidMaxAge         = errors.New("CORS: max age must be non-negative")
+	ErrWildcardCredentials   = errors.New(
+		`CORS: allowed origins must not contain "*" when credentials are allowed`,
+	)
 )
 
 // CORSConfig holds the configuration for CORS middleware.
@@ -71,6 +74,7 @@ func (c *CORSConfig) SetDefaults() {
 
 // Validate ensures origins and methods are present and that every configured method is a real HTTP
 // method and every header is printable ASCII, rejecting values that would produce malformed headers.
+// It also rejects the "*" origin together with AllowCredentials, a combination browsers refuse.
 func (c *CORSConfig) Validate() error {
 	httpMethods := []string{
 		http.MethodGet,
@@ -89,12 +93,14 @@ func (c *CORSConfig) Validate() error {
 			"allowed origins",
 			c.AllowedOrigins,
 			validate.NotNilSlice,
+			notEmptySlice[string](ErrMissingAllowedOrigins),
 			validate.Elements[string](validate.NotEmpty),
 		),
 		validate.Validate(
 			"allowed methods",
 			c.AllowedMethods,
 			validate.NotNilSlice,
+			notEmptySlice[string](ErrMissingAllowedMethods),
 			validate.Elements[string](validate.AllowedValues(httpMethods)),
 		),
 		validate.Validate(
@@ -103,8 +109,38 @@ func (c *CORSConfig) Validate() error {
 			validate.NotNilSlice,
 			validate.Elements[string](validate.NotEmpty, validate.PrintableASCII),
 		),
-		validate.Validate("max age", c.MaxAge, validate.NonNegative),
+		validate.Validate(
+			"exposed headers",
+			c.ExposedHeaders,
+			validate.Elements[string](validate.NotEmpty, validate.PrintableASCII),
+		),
+		validate.Validate("max age", c.MaxAge, func(value int) error {
+			if value < 0 {
+				return ErrInvalidMaxAge
+			}
+
+			return nil
+		}),
+		validate.Validate("allow credentials", c.AllowCredentials, func(value bool) error {
+			if value && containsWildcard(c.AllowedOrigins) {
+				return ErrWildcardCredentials
+			}
+
+			return nil
+		}),
 	)
+}
+
+// notEmptySlice returns a validator that rejects an empty slice with err. A nil slice is left to
+// validate.NotNilSlice, so it is not reported twice.
+func notEmptySlice[T any](err error) func([]T) error {
+	return func(values []T) error {
+		if values != nil && len(values) == 0 {
+			return err
+		}
+
+		return nil
+	}
 }
 
 // CORS returns a middleware that enables Cross-Origin Resource Sharing (CORS).

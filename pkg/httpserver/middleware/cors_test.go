@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/httpserver/middleware"
+	"github.com/spacecafe/go-parts/pkg/validate"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCORS(t *testing.T) {
@@ -278,6 +280,73 @@ func TestCORS_Vary(t *testing.T) {
 			handler.ServeHTTP(rec, req)
 
 			assert.Equal(t, tt.wantVary, rec.Header().Values("Vary"))
+		})
+	}
+}
+
+func TestCORSConfig_Validate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		cfg     func(*middleware.CORSConfig)
+		wantErr error
+		name    string
+	}{
+		{name: "defaults", cfg: func(*middleware.CORSConfig) {}},
+		{
+			name: "credentials with explicit origin",
+			cfg: func(cfg *middleware.CORSConfig) {
+				cfg.AllowedOrigins = []string{"https://example.com"}
+				cfg.AllowCredentials = true
+			},
+		},
+		{
+			name:    "credentials with wildcard origin",
+			cfg:     func(cfg *middleware.CORSConfig) { cfg.AllowCredentials = true },
+			wantErr: middleware.ErrWildcardCredentials,
+		},
+		{
+			name:    "empty allowed origins",
+			cfg:     func(cfg *middleware.CORSConfig) { cfg.AllowedOrigins = []string{} },
+			wantErr: middleware.ErrMissingAllowedOrigins,
+		},
+		{
+			name:    "empty allowed methods",
+			cfg:     func(cfg *middleware.CORSConfig) { cfg.AllowedMethods = []string{} },
+			wantErr: middleware.ErrMissingAllowedMethods,
+		},
+		{
+			name:    "negative max age",
+			cfg:     func(cfg *middleware.CORSConfig) { cfg.MaxAge = -1 },
+			wantErr: middleware.ErrInvalidMaxAge,
+		},
+		{
+			name:    "exposed header with newline",
+			cfg:     func(cfg *middleware.CORSConfig) { cfg.ExposedHeaders = []string{"X-A\r\nX-B: 1"} },
+			wantErr: validate.ErrAllowedSymbols,
+		},
+		{
+			name: "nil exposed headers",
+			cfg:  func(cfg *middleware.CORSConfig) { cfg.ExposedHeaders = nil },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &middleware.CORSConfig{}
+			cfg.SetDefaults()
+			tt.cfg(cfg)
+
+			err := cfg.Validate()
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 }
