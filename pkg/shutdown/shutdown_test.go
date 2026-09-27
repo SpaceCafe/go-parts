@@ -213,3 +213,35 @@ func TestShutdown_Done_DoesNotBlock(t *testing.T) {
 		t.Fatal("Done not closed after shutdown")
 	}
 }
+
+//nolint:paralleltest // Other tests send SIGTERM to the process, which every instance receives.
+func TestShutdown_ForceExitsOnlyOnTimeout(t *testing.T) {
+	tests := []struct {
+		service  *mockService
+		name     string
+		wantExit []int
+	}{
+		{name: "clean shutdown does not exit", service: &mockService{}, wantExit: nil},
+		{
+			name:     "timed out shutdown exits",
+			service:  &mockService{StopTimeout: time.Second},
+			wantExit: []int{shutdown.ExitCodeTimeout},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obj := shutdown.New(&shutdown.Config{Timeout: 100 * time.Millisecond, Force: true})
+
+			var exits []int
+
+			obj.ExitFn = func(code int) { exits = append(exits, code) }
+
+			require.NoError(t, obj.Track(tt.service))
+
+			obj.Shutdown()
+
+			assert.Equal(t, tt.wantExit, exits)
+		})
+	}
+}

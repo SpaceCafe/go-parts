@@ -18,6 +18,9 @@ const (
 	// ExitCodeSigTerm is the exit status code for SIGTERM,
 	// indicating the container received a SIGTERM by the underlying operating system.
 	ExitCodeSigTerm = 128 + int(syscall.SIGTERM) // equals 143
+
+	// ExitCodeTimeout is the exit status code when a programmatic Shutdown timed out.
+	ExitCodeTimeout = 1
 )
 
 var (
@@ -91,7 +94,7 @@ func New(cfg *Config) *Shutdown {
 	signal.Notify(obj.signalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1)
 
 	go func() {
-		defer obj.Shutdown()
+		defer obj.shutdown(true)
 
 		for {
 			sig := <-obj.signalCh
@@ -152,23 +155,7 @@ func (s *Shutdown) Go(task func(context.Context)) error {
 // Shutdown initiates a graceful shutdown manually without waiting for a signal.
 // This is useful for programmatic shutdown scenarios.
 func (s *Shutdown) Shutdown() {
-	s.Log.Info("shutdown: initializing shutdown")
-	s.cancelRuntimeFn()
-
-	go s.observeShutdown(s.cancelShutdownFn)
-
-	select {
-	case <-s.shutdownCtx.Done():
-		s.Log.Info("shutdown: shutdown gracefully completed")
-	case <-time.After(s.cfg.Timeout):
-		s.cancelShutdownFn()
-		s.Log.Error("shutdown: shutdown timed out")
-	}
-
-	if s.cfg.Force {
-		s.Log.Info("shutdown: shutting down forcefully")
-		s.ExitFn(ExitCodeSigTerm)
-	}
+	s.shutdown(false)
 }
 
 // Track initiates a trackable entity, adding it to the wait group and invoking its Start method with the given context.
@@ -216,5 +203,38 @@ func (s *Shutdown) observeShutdown(callback func()) {
 
 	if callback != nil {
 		callback()
+	}
+}
+
+// shutdown cancels the runtime context and waits for tracked services to stop. With Config.Force,
+// it exits the process only when the graceful shutdown timed out: with ExitCodeSigTerm when a
+// signal triggered it, otherwise with ExitCodeTimeout. A clean shutdown always returns, so main can
+// finish and run its deferred functions.
+func (s *Shutdown) shutdown(signaled bool) {
+	s.Log.Info("shutdown: initializing shutdown")
+	s.cancelRuntimeFn()
+
+	go s.observeShutdown(s.cancelShutdownFn)
+
+	select {
+	case <-s.shutdownCtx.Done():
+		s.Log.Info("shutdown: shutdown gracefully completed")
+
+		return
+	case <-time.After(s.cfg.Timeout):
+		s.cancelShutdownFn()
+		s.Log.Error("shutdown: shutdown timed out")
+	}
+
+	if !s.cfg.Force {
+		return
+	}
+
+	s.Log.Info("shutdown: shutting down forcefully")
+
+	if signaled {
+		s.ExitFn(ExitCodeSigTerm)
+	} else {
+		s.ExitFn(ExitCodeTimeout)
 	}
 }

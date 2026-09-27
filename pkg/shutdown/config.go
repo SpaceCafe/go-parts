@@ -18,7 +18,9 @@ type Config struct {
 	// Timeout specifies the duration before the application is forcefully killed.
 	Timeout time.Duration `json:"timeout" yaml:"timeout"`
 
-	// Force indicates whether to forcibly terminate the application without waiting for a graceful shutdown.
+	// Force indicates whether to exit the process when the graceful shutdown times out, so services
+	// that do not stop cannot keep it alive. A shutdown that completes in time never exits the
+	// process; main must then return on its own, for example after Wait.
 	Force bool `json:"force" yaml:"force"`
 }
 
