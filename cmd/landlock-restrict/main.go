@@ -30,6 +30,13 @@ const (
 	exitNotFound = 127
 )
 
+// Landlock ABI versions the rulesets are built for: the filesystem ruleset uses landlock.V9, and
+// the network ruleset needs V4, the first ABI with TCP rules.
+const (
+	fsABI  = 9
+	netABI = 4
+)
+
 // listSeparator separates the entries within a single flag value, following the $PATH convention.
 // A path containing the separator therefore cannot be expressed, which is the trade-off $PATH makes
 // as well.
@@ -124,6 +131,8 @@ func applyRestrictions(opts *options) error {
 	config := landlock.V9
 	if !opts.strict {
 		config = config.BestEffort()
+
+		warnIfDegraded(opts)
 	}
 
 	if opts.restrictFS {
@@ -172,6 +181,34 @@ func newNetConfig(opts *options) (landlock.Config, error) {
 	}
 
 	return *config, nil
+}
+
+// warnIfDegraded prints a warning on stderr when best-effort mode will enforce less than was
+// requested, because the kernel lacks Landlock or supports an older ABI. Without it, a kernel
+// without Landlock would run the command completely unrestricted and silently.
+func warnIfDegraded(opts *options) {
+	kernelABI, err := llsyscall.LandlockGetABIVersion()
+	if err != nil {
+		log.Printf("warning: Landlock is not available (%v), running without restrictions", err)
+
+		return
+	}
+
+	if opts.restrictFS && kernelABI < fsABI {
+		log.Printf(
+			"warning: kernel supports Landlock ABI v%d, filesystem rules need v%d, "+
+				"enforcing only what v%d supports",
+			kernelABI, fsABI, kernelABI,
+		)
+	}
+
+	if (opts.restrictBind || opts.restrictConnect) && kernelABI < netABI {
+		log.Printf(
+			"warning: kernel supports Landlock ABI v%d, TCP rules need v%d, "+
+				"running without network restrictions",
+			kernelABI, netABI,
+		)
+	}
 }
 
 // fatalf reports the failure on stderr and exits with the given status.
