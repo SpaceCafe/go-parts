@@ -112,10 +112,10 @@ func (s *Shutdown) Context() context.Context {
 	return s.runtimeCtx
 }
 
-// Done returns a channel which is closed when the shutdown process is complete.
+// Done returns a channel which is closed when the shutdown process is complete. It returns
+// immediately, like context.Context.Done. The shutdown context is only cancelled by Shutdown after
+// the runtime context, so the channel never closes while the instance is still running.
 func (s *Shutdown) Done() <-chan struct{} {
-	<-s.runtimeCtx.Done()
-
 	return s.shutdownCtx.Done()
 }
 

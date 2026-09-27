@@ -182,3 +182,34 @@ func TestShutdown_Track_RejectedServiceDoesNotBlockShutdown(t *testing.T) {
 
 	assert.Less(t, time.Since(begin), time.Second, "shutdown must not wait for the timeout")
 }
+
+//nolint:paralleltest // Other tests send SIGTERM to the process, which every instance receives.
+func TestShutdown_Done_DoesNotBlock(t *testing.T) {
+	obj := shutdown.New(&shutdown.Config{Timeout: time.Second, Force: false})
+
+	returned := make(chan (<-chan struct{}), 1)
+
+	go func() { returned <- obj.Done() }()
+
+	var done <-chan struct{}
+
+	select {
+	case done = <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("Done blocked on a running instance")
+	}
+
+	select {
+	case <-done:
+		t.Fatal("Done closed before shutdown")
+	default:
+	}
+
+	obj.Shutdown()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Done not closed after shutdown")
+	}
+}
