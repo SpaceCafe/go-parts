@@ -201,7 +201,7 @@ func createEnvName(prefix, fieldName, envTag string) string {
 	}
 
 	runes := []rune(fieldName)
-	for i, char := range fieldName {
+	for i, char := range runes {
 		if i > 0 && unicode.IsUpper(char) {
 			nextIsLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
 			if unicode.IsLower(runes[i-1]) || nextIsLower {

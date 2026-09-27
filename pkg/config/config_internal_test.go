@@ -109,3 +109,20 @@ func TestParseAutoLoadArgs(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateEnvName(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"CCBin":     "CC_BIN",
+		"HTTPPort":  "HTTP_PORT",
+		"maxSize":   "MAX_SIZE",
+		"ÄÄÄÄB":     "ÄÄÄÄB",
+		"GrößeMax":  "GRÖßE_MAX",
+		"ÜberCache": "ÜBER_CACHE",
+	}
+
+	for fieldName, want := range tests {
+		assert.Equal(t, "P_"+want, createEnvName("P", fieldName, ""), fieldName)
+	}
+}
