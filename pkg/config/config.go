@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -44,10 +45,7 @@ type pointerDefaultable[T any] interface {
 }
 
 func AutoLoad(target Validatable, name, envPrefix string) error {
-	var (
-		sources []Source
-		source  Source
-	)
+	var sources []Source
 
 	configPath := flag.String("config", "", "path to config file")
 	isGenerateTemplate := flag.Bool(
@@ -67,22 +65,13 @@ func AutoLoad(target Validatable, name, envPrefix string) error {
 		os.Exit(0)
 	}
 
-	for _, filePath := range configPaths(name, *configPath) {
-		if filePath == "" || filePath == "." || filePath == "./" {
-			continue
-		}
+	source, err := findConfigSource(name, *configPath)
+	if err != nil {
+		return err
+	}
 
-		_, err := os.Stat(filePath)
-		if err == nil {
-			source, err = sourceFromSuffix(filePath)
-			if err == nil {
-				sources = append(sources, source)
-
-				break
-			}
-
-			return err
-		}
+	if source != nil {
+		sources = append(sources, source)
 	}
 
 	// Add environment variable source
@@ -173,10 +162,42 @@ func New[T any, PT pointerDefaultable[T]]() *T {
 	return config
 }
 
+// findConfigSource returns the source for the config file to load. An explicit configPath must
+// exist; its error is returned instead of falling back to another file. Without one, the first
+// existing file from configPaths is used, and only files that do not exist are skipped, so a
+// permission error is reported rather than silently loading a different config. A nil Source
+// without error means no file was found.
+//
+//nolint:ireturn // Returns whichever Source matches the file suffix.
+func findConfigSource(name, configPath string) (Source, error) {
+	if configPath != "" {
+		_, err := os.Stat(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrConfigNotFound, err)
+		}
+
+		return sourceFromSuffix(configPath)
+	}
+
+	for _, filePath := range configPaths(name) {
+		_, err := os.Stat(filePath)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrConfigNotFound, err)
+		}
+
+		return sourceFromSuffix(filePath)
+	}
+
+	return nil, nil //nolint:nilnil // No config file is a valid outcome; env vars still apply.
+}
+
 // configPaths generates a list of potential configuration file paths for the given application name.
-func configPaths(name, configPath string) []string {
+func configPaths(name string) []string {
 	filePaths := []string{
-		filepath.Clean(configPath),
 		filepath.Join(".", name+".json"),
 		filepath.Join(".", name+".yml"),
 		filepath.Join(".", name+".yaml"),
