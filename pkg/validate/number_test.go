@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/validate"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBetween(t *testing.T) {
@@ -78,7 +79,13 @@ func TestBetweenFloat(t *testing.T) {
 			value:      1.5001,
 			wantErr:    validate.ErrNotBetween,
 		},
-		{name: "not a number", lowerBound: 0.5, upperBound: 1.5, value: math.NaN()},
+		{
+			name:       "not a number",
+			lowerBound: 0.5,
+			upperBound: 1.5,
+			value:      math.NaN(),
+			wantErr:    validate.ErrNaN,
+		},
 	}
 
 	for _, tt := range tests {
@@ -253,4 +260,27 @@ func TestPositive(t *testing.T) {
 			requireErr(t, tt.wantErr, validate.Positive(tt.value))
 		})
 	}
+}
+
+func TestNaN(t *testing.T) {
+	t.Parallel()
+
+	nan := math.NaN()
+
+	validators := map[string]func(float64) error{
+		"Between":     validate.Between(0.0, 1.0),
+		"Max":         validate.Max(1.0),
+		"Min":         validate.Min(0.0),
+		"Negative":    validate.Negative[float64],
+		"NonNegative": validate.NonNegative[float64],
+		"Port":        validate.Port[float64],
+		"Positive":    validate.Positive[float64],
+	}
+
+	for name, validator := range validators {
+		require.ErrorIs(t, validator(nan), validate.ErrNaN, name)
+	}
+
+	require.NoError(t, validate.Positive(1.5), "a regular float still passes")
+	require.NoError(t, validate.Positive(3), "integers are never NaN")
 }

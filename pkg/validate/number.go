@@ -15,6 +15,7 @@ var (
 	ErrMin            = errors.New("validate: value must be greater or equal than")
 	ErrDivisorZero    = errors.New("validate: divisor cannot be zero")
 	ErrNotMultipleOf  = errors.New("validate: value must be multiple of")
+	ErrNaN            = errors.New("validate: value must be a number, not NaN")
 )
 
 type Integer interface {
@@ -30,6 +31,10 @@ type Number interface {
 // Between validates that the provided value is within the specified lower and upper bounds (inclusive).
 func Between[T Number](lowerBound, upperBound T) func(T) error {
 	return func(value T) error {
+		if isNaN(value) {
+			return ErrNaN
+		}
+
 		if value < lowerBound || value > upperBound {
 			return fmt.Errorf("%w %v and %v", ErrNotBetween, lowerBound, upperBound)
 		}
@@ -41,6 +46,10 @@ func Between[T Number](lowerBound, upperBound T) func(T) error {
 // Max validates that the provided value is less than or equal to the specified upper bound.
 func Max[T Number](upperBound T) func(T) error {
 	return func(value T) error {
+		if isNaN(value) {
+			return ErrNaN
+		}
+
 		if value > upperBound {
 			return fmt.Errorf("%w %v", ErrMax, upperBound)
 		}
@@ -52,6 +61,10 @@ func Max[T Number](upperBound T) func(T) error {
 // Min validates that the provided value is greater than or equal to the specified lower bound.
 func Min[T Number](lowerBound T) func(T) error {
 	return func(value T) error {
+		if isNaN(value) {
+			return ErrNaN
+		}
+
 		if value < lowerBound {
 			return fmt.Errorf("%w %v", ErrMin, lowerBound)
 		}
@@ -77,6 +90,10 @@ func MultipleOf[T Integer](divisor T) func(T) error {
 
 // Negative validates that the provided numeric value is negative.
 func Negative[T Number](value T) error {
+	if isNaN(value) {
+		return ErrNaN
+	}
+
 	if value >= 0 {
 		return ErrNotNegative
 	}
@@ -86,6 +103,10 @@ func Negative[T Number](value T) error {
 
 // NonNegative validates that the provided numeric value is non-negative (including zero).
 func NonNegative[T Number](value T) error {
+	if isNaN(value) {
+		return ErrNaN
+	}
+
 	if value < 0 {
 		return ErrNotNonNegative
 	}
@@ -95,14 +116,28 @@ func NonNegative[T Number](value T) error {
 
 // Port validates that the provided numeric value is a valid port number (between 0 and 65535).
 func Port[T Number](value T) error {
+	if isNaN(value) {
+		return ErrNaN
+	}
+
 	return Between(0, math.MaxUint16)(int(value))
 }
 
 // Positive validates that the provided numeric value is positive (excluding zero).
 func Positive[T Number](value T) error {
+	if isNaN(value) {
+		return ErrNaN
+	}
+
 	if value <= 0 {
 		return ErrNotPositive
 	}
 
 	return nil
+}
+
+// isNaN reports whether value is a floating-point NaN. Every comparison with NaN is false, so
+// without this check NaN would pass every bound. For integer types it is always false.
+func isNaN[T Number](value T) bool {
+	return value != value //nolint:gocritic // Self-comparison is the generic NaN test.
 }
