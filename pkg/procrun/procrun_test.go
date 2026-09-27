@@ -175,3 +175,25 @@ func TestCommand_Timeout(t *testing.T) {
 	require.Error(t, err)
 	require.NotNil(t, result)
 }
+
+func TestRunner_Run_WithoutHelperBinaries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.LandlockBin = ""
+	cfg.PrlimitBin = ""
+	require.NoError(t, cfg.Validate())
+
+	var stdout bytes.Buffer
+
+	res, err := procrun.New(cfg).Run(t.Context(), &procrun.Command{
+		Path:   "echo",
+		Args:   []string{"hello"},
+		Stdout: &stdout,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, res.ExitCode)
+	assert.Equal(t, "hello\n", stdout.String())
+}

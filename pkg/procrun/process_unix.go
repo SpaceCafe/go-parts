@@ -23,12 +23,19 @@ const (
 	listSeparator = string(os.PathListSeparator)
 )
 
-// applyArguments configures a Runner's arguments based on its configuration.
-func applyArguments(r *Runner) error {
-	r.args = append(r.args, landlockArgs(r.cfg)...)
-	r.args = append(r.args, prlimitArgs(r.cfg)...)
+// applyArguments configures a Runner's arguments based on its configuration. A helper binary that
+// is not configured is skipped, so its restrictions are not applied but the command still runs, as
+// checkCapabilities warns.
+func applyArguments(runner *Runner) error {
+	if runner.cfg.LandlockBin != "" {
+		runner.args = append(runner.args, landlockArgs(runner.cfg)...)
+	}
 
-	r.Log.Debug("procrun: created args to restrict processes", "args", r.args)
+	if runner.cfg.PrlimitBin != "" {
+		runner.args = append(runner.args, prlimitArgs(runner.cfg)...)
+	}
+
+	runner.Log.Debug("procrun: created args to restrict processes", "args", runner.args)
 
 	return nil
 }
@@ -48,12 +55,12 @@ func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 // checkCapabilities checks and logs if the required binaries are available.
 func checkCapabilities(runner *Runner) {
 	if runner.cfg.LandlockBin == "" {
-		runner.Log.Warn("procrun: landlock-restrict binary not found." +
+		runner.Log.Warn("procrun: landlock-restrict binary not found. " +
 			"Process's filesystem and network restrictions will not be applied! Please check or ignore if intended.")
 	}
 
 	if runner.cfg.PrlimitBin == "" {
-		runner.Log.Warn("procrun: prlimit binary not found." +
+		runner.Log.Warn("procrun: prlimit binary not found. " +
 			"Process's resource limits will not be applied! Please check or ignore if intended.")
 	}
 }
