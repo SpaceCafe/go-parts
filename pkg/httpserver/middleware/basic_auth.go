@@ -39,8 +39,9 @@ type TokenAuthenticator func(token string) bool
 
 // BasicAuthConfig holds the configuration for BasicAuth middleware.
 type BasicAuthConfig struct {
-	// Principals defines a mapping of usernames to their respective passwords for basic authentication.
-	Principals map[string]string `json:"principals" yaml:"principals"`
+	// Principals defines a mapping of usernames to their respective passwords for basic
+	// authentication. Passwords are secrets, so validation errors never echo them.
+	Principals map[string]validate.Secret `json:"principals" yaml:"principals"`
 
 	// Authenticator validates the username and password of HTTP Basic credentials.
 	Authenticator Authenticator `env:"-" json:"-" yaml:"-"`
@@ -49,8 +50,9 @@ type BasicAuthConfig struct {
 	// HTTP Basic credentials.
 	TokenAuthenticator TokenAuthenticator `env:"-" json:"-" yaml:"-"`
 
-	// Tokens defines a list of pre-approved tokens for token-based authentication.
-	Tokens []string `json:"tokens" yaml:"tokens"`
+	// Tokens defines a list of pre-approved tokens for token-based authentication. Tokens are
+	// secrets, so validation errors never echo them.
+	Tokens []validate.Secret `json:"tokens" yaml:"tokens"`
 
 	// UseTokens indicates whether token-based authentication is enabled in addition to basic authentication.
 	UseTokens bool `json:"useTokens" yaml:"useTokens"`
@@ -59,8 +61,8 @@ type BasicAuthConfig struct {
 // SetDefaults initializes empty principal and token collections and installs the built-in
 // authenticators that check credentials against them.
 func (c *BasicAuthConfig) SetDefaults() {
-	c.Principals = map[string]string{}
-	c.Tokens = []string{}
+	c.Principals = map[string]validate.Secret{}
+	c.Tokens = []validate.Secret{}
 	c.Authenticator = configAuthenticator(c)
 	c.TokenAuthenticator = configTokenAuthenticator(c)
 	c.UseTokens = false
@@ -74,13 +76,13 @@ func (c *BasicAuthConfig) Validate() error {
 			"principals",
 			c.Principals,
 			validate.NotNilMap,
-			validate.Entries[string, string](validate.LengthMin[string](minSecretLength)),
+			validate.Entries[string](validate.LengthMin[validate.Secret](minSecretLength)),
 		),
 		validate.Validate(
 			"tokens",
 			c.Tokens,
 			validate.NotNilSlice,
-			validate.Elements[string](validate.LengthMin[string](minSecretLength)),
+			validate.Elements(validate.LengthMin[validate.Secret](minSecretLength)),
 		),
 		validate.Validate("authenticator", &c.Authenticator, validate.NotNilPointer),
 	)
@@ -121,7 +123,7 @@ func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 func configAuthenticator(cfg *BasicAuthConfig) Authenticator {
 	return func(username, password string) bool {
 		if expectedPassword, ok := cfg.Principals[username]; ok {
-			return ValidatePasswords(expectedPassword, password)
+			return ValidatePasswords(string(expectedPassword), password)
 		}
 
 		return false
@@ -133,7 +135,7 @@ func configAuthenticator(cfg *BasicAuthConfig) Authenticator {
 func configTokenAuthenticator(cfg *BasicAuthConfig) TokenAuthenticator {
 	return func(token string) bool {
 		for i := range cfg.Tokens {
-			if ValidatePasswords(cfg.Tokens[i], token) {
+			if ValidatePasswords(string(cfg.Tokens[i]), token) {
 				return true
 			}
 		}

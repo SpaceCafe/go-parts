@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/httpserver/middleware"
+	"github.com/spacecafe/go-parts/pkg/validate"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBasicAuth(t *testing.T) {
@@ -25,7 +27,7 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "valid token",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Tokens = []string{"valid-token"}
+				cfg.Tokens = []validate.Secret{"valid-token"}
 				cfg.UseTokens = true
 			},
 			headers: map[string]string{
@@ -36,7 +38,7 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "invalid token",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Tokens = []string{"valid-token"}
+				cfg.Tokens = []validate.Secret{"valid-token"}
 				cfg.UseTokens = true
 			},
 			headers: map[string]string{
@@ -56,7 +58,7 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "valid basic auth",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Principals = map[string]string{"user": "pass"}
+				cfg.Principals = map[string]validate.Secret{"user": "pass"}
 			},
 			basicAuth:  true,
 			username:   "user",
@@ -66,7 +68,7 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "invalid basic auth",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Principals = map[string]string{"user": "pass"}
+				cfg.Principals = map[string]validate.Secret{"user": "pass"}
 			},
 			basicAuth:      true,
 			username:       "user",
@@ -77,7 +79,7 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "token rejected as basic password",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Tokens = []string{"valid-token"}
+				cfg.Tokens = []validate.Secret{"valid-token"}
 				cfg.UseTokens = true
 			},
 			basicAuth:      true,
@@ -89,8 +91,8 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "principal login with tokens enabled",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Principals = map[string]string{"alice": "alicepass"}
-				cfg.Tokens = []string{"valid-token"}
+				cfg.Principals = map[string]validate.Secret{"alice": "alicepass"}
+				cfg.Tokens = []validate.Secret{"valid-token"}
 				cfg.UseTokens = true
 			},
 			basicAuth:  true,
@@ -101,7 +103,7 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "principal password rejected as token",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Principals = map[string]string{"alice": "alicepass"}
+				cfg.Principals = map[string]validate.Secret{"alice": "alicepass"}
 				cfg.UseTokens = true
 			},
 			headers: map[string]string{
@@ -150,5 +152,21 @@ func TestBasicAuth(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestBasicAuthConfig_Validate_RedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	cfg := &middleware.BasicAuthConfig{}
+	cfg.SetDefaults()
+	cfg.Principals = map[string]validate.Secret{"alice": "alicepass", "bob": "short"}
+	cfg.Tokens = []validate.Secret{"qz9"}
+
+	err := cfg.Validate()
+	require.ErrorIs(t, err, validate.ErrLengthMin)
+
+	for _, secret := range []string{"alicepass", "short", "qz9"} {
+		assert.NotContains(t, err.Error(), secret)
 	}
 }

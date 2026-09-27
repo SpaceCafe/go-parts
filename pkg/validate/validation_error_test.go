@@ -53,6 +53,31 @@ func TestValidationError_Error(t *testing.T) {
 			want:  `username (value <redacted>): validate: value must be empty`,
 		},
 		{
+			name:  "Secret value",
+			value: validate.Secret("hunter2"),
+			want:  `username (value <redacted>): validate: value must be empty`,
+		},
+		{
+			name:  "map of secrets",
+			value: map[string]validate.Secret{"alice": "alicepass"},
+			want:  `username (value <redacted>): validate: value must be empty`,
+		},
+		{
+			name:  "slice of secrets",
+			value: []validate.Secret{"token-1"},
+			want:  `username (value <redacted>): validate: value must be empty`,
+		},
+		{
+			name:  "struct holding a secret",
+			value: struct{ Password *secret }{Password: new(secret("hunter2"))},
+			want:  `username (value <redacted>): validate: value must be empty`,
+		},
+		{
+			name:  "map of plain strings",
+			value: map[string]string{"alice": "x"},
+			want:  `username (value "map[alice:x]"): validate: value must be empty`,
+		},
+		{
 			name:  "value on the cap",
 			value: strings.Repeat("a", maxValueLength),
 			want: `username (value "` + strings.Repeat(
@@ -105,4 +130,13 @@ func TestValidationError_Unwrap(t *testing.T) {
 		require.ErrorIs(t, err, validate.ErrLengthMin)
 		require.NotErrorIs(t, err, validate.ErrNil)
 	})
+}
+
+func TestSecret_String(t *testing.T) {
+	t.Parallel()
+
+	value := validate.Secret("hunter2")
+
+	require.Equal(t, "<redacted>", value.String())
+	require.Equal(t, "hunter2", string(value))
 }
