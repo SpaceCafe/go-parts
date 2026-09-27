@@ -2,7 +2,6 @@ package shutdown_test
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,8 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-var errMock = errors.New("stop error")
 
 type mockService struct {
 	ReturnError error
@@ -33,11 +30,6 @@ func (m *mockService) Stop(_ context.Context) error {
 	<-time.After(m.StopTimeout)
 
 	return m.ReturnError
-}
-
-// errorIsNotTrackable asserts that err wraps shutdown.ErrNotTrackable.
-func errorIsNotTrackable(t assert.TestingT, err error, msgAndArgs ...any) bool {
-	return assert.ErrorIs(t, err, shutdown.ErrNotTrackable, msgAndArgs...)
 }
 
 //nolint:paralleltest // Other tests send SIGTERM to the process, which every instance receives.

@@ -287,60 +287,17 @@ func TestDirRO(t *testing.T) {
 func TestDirRW(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		setup    func(*testing.T) string
-		wantErr  error
-		name     string
-		unprivil bool
-	}{
-		{name: "full access", setup: func(t *testing.T) string {
+	tests := append(rwCases(mkDir, 0o700, 0o500, 0o300), accessCase{
+		name: "missing path",
+		setup: func(t *testing.T) string {
 			t.Helper()
 
-			return mkDir(t, 0o700)
-		}},
-		{
-			name: "read only",
-			setup: func(t *testing.T) string {
-				t.Helper()
-
-				return mkDir(t, 0o500)
-			},
-			wantErr:  validate.ErrNotWritable,
-			unprivil: true,
+			return missing(t)
 		},
-		{
-			name: "write only",
-			setup: func(t *testing.T) string {
-				t.Helper()
+		wantErr: validate.ErrPathNotExist,
+	})
 
-				return mkDir(t, 0o300)
-			},
-			wantErr:  validate.ErrNotReadable,
-			unprivil: true,
-		},
-		{
-			name: "missing path",
-			setup: func(t *testing.T) string {
-				t.Helper()
-
-				return missing(t)
-			},
-			wantErr: validate.ErrPathNotExist,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if tt.unprivil {
-				requireUnprivileged(t)
-			}
-
-			err := validate.DirRW(tt.setup(t))
-			requireErr(t, tt.wantErr, err)
-		})
-	}
+	runAccessCases(t, tests, validate.DirRW[string])
 }
 
 func TestFileExist(t *testing.T) {
@@ -569,60 +526,17 @@ func TestFileRO(t *testing.T) {
 func TestFileRW(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		setup    func(*testing.T) string
-		wantErr  error
-		name     string
-		unprivil bool
-	}{
-		{name: "read and write", setup: func(t *testing.T) string {
+	tests := append(rwCases(mkFile, 0o600, 0o400, 0o200), accessCase{
+		name: "named pipe",
+		setup: func(t *testing.T) string {
 			t.Helper()
 
-			return mkFile(t, 0o600)
-		}},
-		{
-			name: "read only",
-			setup: func(t *testing.T) string {
-				t.Helper()
-
-				return mkFile(t, 0o400)
-			},
-			wantErr:  validate.ErrNotWritable,
-			unprivil: true,
+			return mkFIFO(t)
 		},
-		{
-			name: "write only",
-			setup: func(t *testing.T) string {
-				t.Helper()
+		wantErr: validate.ErrNotFile,
+	})
 
-				return mkFile(t, 0o200)
-			},
-			wantErr:  validate.ErrNotReadable,
-			unprivil: true,
-		},
-		{
-			name: "named pipe",
-			setup: func(t *testing.T) string {
-				t.Helper()
-
-				return mkFIFO(t)
-			},
-			wantErr: validate.ErrNotFile,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if tt.unprivil {
-				requireUnprivileged(t)
-			}
-
-			err := validate.FileRW(tt.setup(t))
-			requireErr(t, tt.wantErr, err)
-		})
-	}
+	runAccessCases(t, tests, validate.FileRW[string])
 }
 
 // TestNamedStringType pins down that the validators are usable through Validate on a defined string
@@ -715,6 +629,62 @@ func TestPathNotExist(t *testing.T) {
 			}
 
 			requireErr(t, tt.wantErr, err)
+		})
+	}
+}
+
+// accessCase is one path setup for the read-write access validators.
+type accessCase struct {
+	setup    func(*testing.T) string
+	wantErr  error
+	name     string
+	unprivil bool
+}
+
+// rwCases returns the cases DirRW and FileRW share: an entry created by mkEntry with full, read-only
+// and write-only permissions.
+func rwCases(
+	mkEntry func(*testing.T, fs.FileMode) string,
+	full, readOnly, writeOnly fs.FileMode,
+) []accessCase {
+	entry := func(perm fs.FileMode) func(*testing.T) string {
+		return func(t *testing.T) string {
+			t.Helper()
+
+			return mkEntry(t, perm)
+		}
+	}
+
+	return []accessCase{
+		{name: "read and write", setup: entry(full)},
+		{
+			name:     "read only",
+			setup:    entry(readOnly),
+			wantErr:  validate.ErrNotWritable,
+			unprivil: true,
+		},
+		{
+			name:     "write only",
+			setup:    entry(writeOnly),
+			wantErr:  validate.ErrNotReadable,
+			unprivil: true,
+		},
+	}
+}
+
+// runAccessCases runs each case against validator in a parallel subtest.
+func runAccessCases(t *testing.T, tests []accessCase, validator func(string) error) {
+	t.Helper()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.unprivil {
+				requireUnprivileged(t)
+			}
+
+			requireErr(t, tt.wantErr, validator(tt.setup(t)))
 		})
 	}
 }

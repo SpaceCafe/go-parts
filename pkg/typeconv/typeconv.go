@@ -93,7 +93,7 @@ func (c *Converter) setField(field reflect.Value, value string) error {
 
 	// Check if the type implements encoding.TextUnmarshaler
 	if field.CanAddr() {
-		if unmarshaler, ok := field.Addr().Interface().(encoding.TextUnmarshaler); ok {
+		if unmarshaler, ok := reflect.TypeAssert[encoding.TextUnmarshaler](field.Addr()); ok {
 			err := unmarshaler.UnmarshalText([]byte(value))
 			if err != nil {
 				return fmt.Errorf("%w: failed to unmarshal: %w", ErrInvalidValue, err)

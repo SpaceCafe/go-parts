@@ -10,8 +10,6 @@ import (
 
 // ByteSize represents a size in bytes that can be parsed from human-readable SI/IEC strings like
 // "100K", "512Mi", "2G", "1.5TB".
-//
-//nolint:recvcheck // Reference receiver is required on unmarshaling methods.
 type ByteSize uint64
 
 //nolint:varnamelen // SI/IEC prefixes.

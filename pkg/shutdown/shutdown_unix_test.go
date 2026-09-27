@@ -4,6 +4,7 @@ package shutdown_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"syscall"
 	"testing"
@@ -141,4 +142,11 @@ func sendSignal(t *testing.T, signal os.Signal) {
 
 	err = p.Signal(signal)
 	require.NoError(t, err)
+}
+
+var errMock = errors.New("stop error")
+
+// errorIsNotTrackable asserts that err wraps shutdown.ErrNotTrackable.
+func errorIsNotTrackable(t assert.TestingT, err error, msgAndArgs ...any) bool {
+	return assert.ErrorIs(t, err, shutdown.ErrNotTrackable, msgAndArgs...)
 }
