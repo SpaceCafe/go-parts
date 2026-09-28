@@ -31,7 +31,7 @@ func TestShutdown_Track(t *testing.T) {
 		},
 		{
 			name:    "timeout less than stop timeout",
-			cfg:     &shutdown.Config{Timeout: 0, Force: true},
+			cfg:     &shutdown.Config{Timeout: time.Millisecond, Force: true},
 			arg:     &mockService{StopTimeout: time.Second},
 			wantErr: assert.NoError,
 		},
@@ -43,7 +43,7 @@ func TestShutdown_Track(t *testing.T) {
 		},
 		{
 			name:    "timeout less than stop timeout without force",
-			cfg:     &shutdown.Config{Timeout: 0, Force: false},
+			cfg:     &shutdown.Config{Timeout: time.Millisecond, Force: false},
 			arg:     &mockService{StopTimeout: time.Second},
 			wantErr: assert.NoError,
 		},

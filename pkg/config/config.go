@@ -28,9 +28,22 @@ type Defaultable interface {
 	SetDefaults()
 }
 
-// Validatable ensures that the configuration struct provides a validation method.
+// Validatable ensures that the configuration struct provides a validation method. Validate runs at
+// more than one stage: Load checks what the sources produced, and constructors check the config
+// they receive through MustValidate, which also covers configs built or changed in code. Validate
+// must therefore be idempotent and cheap to call again.
 type Validatable interface {
 	Validate() error
+}
+
+// MustValidate panics if target fails validation. Constructors call it on the config they receive,
+// because an invalid config at that point is a programmer error, like a bad pattern passed to
+// regexp.MustCompile. Operator input is checked earlier by Load, which returns the error instead.
+func MustValidate(target Validatable) {
+	err := target.Validate()
+	if err != nil {
+		panic(fmt.Errorf("%w: %T: %w", ErrValidation, target, err))
+	}
 }
 
 // Source defines a configuration source.

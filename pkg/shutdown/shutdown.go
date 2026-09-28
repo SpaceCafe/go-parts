@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/log"
 )
 
@@ -74,12 +75,15 @@ type Shutdown struct {
 	mu sync.Mutex
 }
 
-// New creates a new Shutdown instance with the provided configuration.
+// New creates a new Shutdown instance with the provided configuration. A nil cfg applies the
+// defaults. An invalid cfg panics (see config.MustValidate).
 func New(cfg *Config) *Shutdown {
 	if cfg == nil {
 		cfg = &Config{}
 		cfg.SetDefaults()
 	}
+
+	config.MustValidate(cfg)
 
 	runtimeCtx, cancelRuntimeFn := context.WithCancel(context.Background())
 	shutdownCtx, cancelShutdownFn := context.WithCancel(context.Background())

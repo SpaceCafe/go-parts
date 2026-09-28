@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/procrun"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -388,4 +389,23 @@ func TestRunner_Run_ErrorChain(t *testing.T) {
 
 	require.ErrorIs(t, err, procrun.ErrProcessStart)
 	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+func TestNew_NilConfigAppliesDefaults(t *testing.T) {
+	t.Parallel()
+	requireHelperBinaries(t)
+
+	assert.NotPanics(t, func() { procrun.New(nil) })
+}
+
+func TestNew_InvalidConfigFailsRun(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+	cfg.Restrictions.BindTCP = []int{99999}
+
+	_, err := procrun.New(cfg).Run(t.Context(), &procrun.Command{Path: "true"})
+	require.ErrorIs(t, err, procrun.ErrProcessStart)
+	assert.ErrorIs(t, err, config.ErrValidation)
 }

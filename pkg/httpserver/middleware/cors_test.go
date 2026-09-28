@@ -29,6 +29,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"https://example.com"},
 				AllowedMethods: []string{http.MethodGet},
+				AllowedHeaders: []string{},
 			},
 			requestOrigin:      "https://example.com",
 			requestMethod:      http.MethodGet,
@@ -42,6 +43,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"https://example.com"},
 				AllowedMethods: []string{http.MethodGet},
+				AllowedHeaders: []string{},
 			},
 			requestOrigin:      "https://notallowed.com",
 			requestMethod:      http.MethodGet,
@@ -53,6 +55,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"*"},
 				AllowedMethods: []string{http.MethodGet},
+				AllowedHeaders: []string{},
 			},
 			requestOrigin:      "https://anysite.com",
 			requestMethod:      http.MethodGet,
@@ -85,6 +88,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"https://example.com"},
 				AllowedMethods: []string{http.MethodGet, http.MethodPost},
+				AllowedHeaders: []string{},
 			},
 			requestOrigin:      "https://notallowed.com",
 			requestMethod:      http.MethodOptions,
@@ -97,6 +101,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"https://example.com"},
 				AllowedMethods: []string{http.MethodGet},
+				AllowedHeaders: []string{},
 			},
 			requestOrigin:      "https://example.com",
 			requestMethod:      http.MethodOptions,
@@ -110,6 +115,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"https://example.com"},
 				AllowedMethods: []string{http.MethodGet},
+				AllowedHeaders: []string{},
 			},
 			requestMethod:      http.MethodOptions,
 			requestHeaders:     map[string]string{"Access-Control-Request-Method": "POST"},
@@ -121,6 +127,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins:   []string{"https://example.com"},
 				AllowedMethods:   []string{http.MethodGet},
+				AllowedHeaders:   []string{},
 				AllowCredentials: true,
 			},
 			requestOrigin:      "https://example.com",
@@ -136,6 +143,7 @@ func TestCORS(t *testing.T) {
 			cfg: &middleware.CORSConfig{
 				AllowedOrigins: []string{"https://example.com"},
 				AllowedMethods: []string{http.MethodGet},
+				AllowedHeaders: []string{},
 			},
 			requestOrigin:      "",
 			requestMethod:      http.MethodGet,

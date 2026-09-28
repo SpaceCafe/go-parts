@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/log"
 )
 
@@ -70,7 +71,16 @@ type Runner struct {
 	args []string
 }
 
+// New creates a Runner from cfg and applies the given options. A nil cfg applies the defaults. An
+// invalid cfg panics (see config.MustValidate).
 func New(cfg *Config, opts ...Option) *Runner {
+	if cfg == nil {
+		cfg = &Config{}
+		cfg.SetDefaults()
+	}
+
+	config.MustValidate(cfg)
+
 	obj := &Runner{
 		Log: slog.Default(),
 		cfg: cfg,

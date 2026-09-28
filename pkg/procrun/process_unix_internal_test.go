@@ -3,6 +3,7 @@
 package procrun
 
 import (
+	"os/exec"
 	"testing"
 	"time"
 
@@ -27,14 +28,21 @@ func TestLandlockArgs_Strict(t *testing.T) {
 func TestApplyArguments_PrlimitBeforeLandlock(t *testing.T) {
 	t.Parallel()
 
+	// New validates the config, which needs both binaries on PATH. TestMain builds landlock-restrict.
+	for _, bin := range []string{DefaultLandlockBin, DefaultPrlimitBin} {
+		_, err := exec.LookPath(bin)
+		if err != nil {
+			t.Skipf("%s not found: %v", bin, err)
+		}
+	}
+
 	cfg := &Config{}
 	cfg.SetDefaults()
-	cfg.LandlockBin = "/usr/bin/landlock-restrict"
-	cfg.PrlimitBin = "/usr/bin/prlimit"
 
+	// New resolves both binaries to absolute paths in cfg.
 	runner := New(cfg, WithLogger(discardLogger{}))
 
-	assert.Equal(t, "/usr/bin/prlimit", runner.args[0])
+	assert.Equal(t, cfg.PrlimitBin, runner.args[0])
 	assert.Equal(t, "--", runner.args[len(runner.args)-1])
 	assert.Equal(t, prlimitArgs(cfg), runner.args[:len(prlimitArgs(cfg))])
 	assert.Equal(t, landlockArgs(cfg), runner.args[len(prlimitArgs(cfg)):])

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/httpserver"
 	"github.com/spacecafe/go-parts/pkg/httpserver/middleware"
 	"github.com/spacecafe/go-parts/pkg/validate"
@@ -62,17 +63,17 @@ func TestBasicAuth(t *testing.T) {
 		{
 			name: "valid basic auth",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Principals = map[string]validate.Secret{"user": "pass"}
+				cfg.Principals = map[string]validate.Secret{"user": "password"}
 			},
 			basicAuth:  true,
 			username:   "user",
-			password:   "pass",
+			password:   "password",
 			wantStatus: http.StatusOK,
 		},
 		{
 			name: "invalid basic auth",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
-				cfg.Principals = map[string]validate.Secret{"user": "pass"}
+				cfg.Principals = map[string]validate.Secret{"user": "password"}
 			},
 			basicAuth:      true,
 			username:       "user",
@@ -348,6 +349,46 @@ func TestNilConfigs(t *testing.T) {
 			)
 
 			assert.Equal(t, tt.wantStatus, rec.Code)
+		})
+	}
+}
+
+func TestInvalidConfigsPanic(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]func(){
+		"BasicAuth without authenticator": func() {
+			cfg := &middleware.BasicAuthConfig{}
+			cfg.SetDefaults()
+			cfg.Authenticator = nil
+			middleware.BasicAuth(cfg)
+		},
+		"RateLimit without leak rate": func() {
+			cfg := &middleware.RateLimitConfig{}
+			cfg.SetDefaults()
+			cfg.LeakRate = 0
+			middleware.RateLimit(t.Context(), cfg)
+		},
+		"CORS with wildcard and credentials": func() {
+			cfg := &middleware.CORSConfig{}
+			cfg.SetDefaults()
+			cfg.AllowedOrigins = []string{"*"}
+			cfg.AllowCredentials = true
+			middleware.CORS(cfg)
+		},
+	}
+
+	for name, construct := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				err, ok := recover().(error)
+				require.True(t, ok, "constructor must panic with an error")
+				assert.ErrorIs(t, err, config.ErrValidation)
+			}()
+
+			construct()
 		})
 	}
 }

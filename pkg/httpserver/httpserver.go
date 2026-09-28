@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/log"
 	"github.com/spacecafe/go-parts/pkg/shutdown"
 )
@@ -43,8 +44,16 @@ type HTTPServer struct {
 
 // New builds an HTTPServer from Config and applies the given options. TLS is enabled only when both
 // Config.CertFile and Config.KeyFile are set, and H2C is enabled only when Config.EnableH2C is true.
-// Options run last so they can override any derived default.
+// Options run last so they can override any derived default. A nil cfg applies the defaults. An
+// invalid cfg panics (see config.MustValidate).
 func New(cfg *Config, opts ...Option) *HTTPServer {
+	if cfg == nil {
+		cfg = &Config{}
+		cfg.SetDefaults()
+	}
+
+	config.MustValidate(cfg)
+
 	protocols := &http.Protocols{}
 	protocols.SetHTTP1(true)
 	protocols.SetHTTP2(true)

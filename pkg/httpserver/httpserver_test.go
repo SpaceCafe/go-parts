@@ -8,8 +8,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
-	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/spacecafe/go-parts/pkg/httpserver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,13 +35,13 @@ func TestHTTPServer_Start(t *testing.T) {
 	}{
 		{
 			name:    "nil context",
-			server:  httpserver.New(&httpserver.Config{}),
+			server:  httpserver.New(testConfig(0, "", "")),
 			ctx:     nil,
 			wantErr: httpserver.ErrInvalidContext,
 		},
 		{
 			name:   "cancelled context",
-			server: httpserver.New(&httpserver.Config{}),
+			server: httpserver.New(testConfig(0, "", "")),
 			ctx: func() context.Context {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
@@ -53,27 +52,18 @@ func TestHTTPServer_Start(t *testing.T) {
 		},
 		{
 			name:    "server startup without TLS succeeds",
-			server:  httpserver.New(&httpserver.Config{}, httpserver.WithLogger(&mockLogger{})),
+			server:  httpserver.New(testConfig(0, "", ""), httpserver.WithLogger(&mockLogger{})),
 			ctx:     context.Background(),
 			wantErr: nil,
 		},
 		{
 			name: "server startup with TLS succeeds",
 			server: httpserver.New(
-				&httpserver.Config{Port: 8081, CertFile: certFile, KeyFile: keyFile},
+				testConfig(8081, certFile, keyFile),
 				httpserver.WithLogger(&mockLogger{}),
 			),
 			ctx:     context.Background(),
 			wantErr: nil,
-		},
-		{
-			name: "server startup fails immediately",
-			server: httpserver.New(
-				&httpserver.Config{Port: 99999},
-				httpserver.WithLogger(&mockLogger{}),
-			),
-			ctx:     context.Background(),
-			wantErr: &net.AddrError{},
 		},
 	}
 
@@ -82,18 +72,7 @@ func TestHTTPServer_Start(t *testing.T) {
 			t.Parallel()
 
 			err := tt.server.Start(tt.ctx)
-			{
-				var errCase0 *net.AddrError
-				switch {
-				case tt.wantErr == nil:
-					require.NoError(t, err)
-				case errors.As(tt.wantErr, &errCase0):
-					var addrErr *net.AddrError
-					require.ErrorAs(t, err, &addrErr)
-				default:
-					require.ErrorIs(t, err, tt.wantErr)
-				}
-			}
+			require.ErrorIs(t, err, tt.wantErr)
 
 			if err == nil {
 				assert.NoError(t, tt.server.Server.Shutdown(context.Background()))
@@ -108,7 +87,7 @@ func TestHTTPServer_TLSHandshake(t *testing.T) {
 	certFile, keyFile := generateTestCert(t)
 
 	server := httpserver.New(
-		&httpserver.Config{Host: "127.0.0.1", Port: 8444, CertFile: certFile, KeyFile: keyFile},
+		testConfig(8444, certFile, keyFile),
 		httpserver.WithLogger(&mockLogger{}),
 	)
 	server.Server.Handler = http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
@@ -151,16 +130,43 @@ func TestHTTPServer_TLSHandshake(t *testing.T) {
 func TestHTTPServer_Start_InvalidKeyPair(t *testing.T) {
 	t.Parallel()
 
+	// Files that exist pass Validate in New, so the unparsable key pair only fails in Start.
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "cert.pem")
+	keyFile := filepath.Join(dir, "key.pem")
+
+	require.NoError(t, os.WriteFile(certFile, []byte("not a certificate"), 0o600))
+	require.NoError(t, os.WriteFile(keyFile, []byte("not a key"), 0o600))
+
 	server := httpserver.New(
-		&httpserver.Config{
-			Port:     8445,
-			CertFile: "/nonexistent/cert.pem",
-			KeyFile:  "/nonexistent/key.pem",
-		},
+		testConfig(8445, certFile, keyFile),
 		httpserver.WithLogger(&mockLogger{}),
 	)
 
-	require.ErrorIs(t, server.Start(context.Background()), fs.ErrNotExist)
+	require.Error(t, server.Start(context.Background()))
+}
+
+func TestNew_InvalidConfigPanics(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]*httpserver.Config{
+		"port out of range": testConfig(99999, "", ""),
+		"missing key pair":  testConfig(8080, "/nonexistent/cert.pem", "/nonexistent/key.pem"),
+	}
+
+	for name, cfg := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				err, ok := recover().(error)
+				require.True(t, ok, "New must panic with an error")
+				assert.ErrorIs(t, err, config.ErrValidation)
+			}()
+
+			httpserver.New(cfg)
+		})
+	}
 }
 
 func TestHTTPServer_Start_PortInUse(t *testing.T) {
@@ -174,7 +180,7 @@ func TestHTTPServer_Start_PortInUse(t *testing.T) {
 	require.True(t, ok)
 
 	server := httpserver.New(
-		&httpserver.Config{Host: "127.0.0.1", Port: addr.Port},
+		testConfig(addr.Port, "", ""),
 		httpserver.WithLogger(&mockLogger{}),
 	)
 
@@ -188,11 +194,13 @@ func TestNew_ListenAddress(t *testing.T) {
 		"127.0.0.1": "127.0.0.1:8080",
 		"localhost": "localhost:8080",
 		"::1":       "[::1]:8080",
-		"":          ":8080",
 	}
 
 	for host, wantAddr := range tests {
-		server := httpserver.New(&httpserver.Config{Host: host, Port: 8080})
+		cfg := testConfig(8080, "", "")
+		cfg.Host = host
+
+		server := httpserver.New(cfg)
 		assert.Equal(t, wantAddr, server.Server.Addr, "host %q", host)
 	}
 }
@@ -200,7 +208,7 @@ func TestNew_ListenAddress(t *testing.T) {
 func TestHTTPServer_Stop(t *testing.T) {
 	t.Parallel()
 
-	server := httpserver.New(&httpserver.Config{Port: 8446}, httpserver.WithLogger(&mockLogger{}))
+	server := httpserver.New(testConfig(8446, "", ""), httpserver.WithLogger(&mockLogger{}))
 	require.NoError(t, server.Start(context.Background()))
 
 	require.NoError(t, server.Stop(context.Background()))
@@ -209,7 +217,7 @@ func TestHTTPServer_Stop(t *testing.T) {
 func TestHTTPServer_StartAfterStop(t *testing.T) {
 	t.Parallel()
 
-	server := httpserver.New(&httpserver.Config{Port: 8447}, httpserver.WithLogger(&mockLogger{}))
+	server := httpserver.New(testConfig(8447, "", ""), httpserver.WithLogger(&mockLogger{}))
 	require.NoError(t, server.Start(context.Background()))
 	require.NoError(t, server.Stop(context.Background()))
 
@@ -219,10 +227,22 @@ func TestHTTPServer_StartAfterStop(t *testing.T) {
 func TestHTTPServer_StartAfterServerShutdown(t *testing.T) {
 	t.Parallel()
 
-	server := httpserver.New(&httpserver.Config{Port: 8448}, httpserver.WithLogger(&mockLogger{}))
+	server := httpserver.New(testConfig(8448, "", ""), httpserver.WithLogger(&mockLogger{}))
 	require.NoError(t, server.Server.Shutdown(context.Background()))
 
 	require.ErrorIs(t, server.Start(context.Background()), httpserver.ErrServerStopped)
+}
+
+// testConfig returns a valid Config listening on port, with TLS enabled when certFile and keyFile
+// are set. Port 0 picks a free port.
+func testConfig(port int, certFile, keyFile string) *httpserver.Config {
+	cfg := &httpserver.Config{}
+	cfg.SetDefaults()
+	cfg.Port = port
+	cfg.CertFile = certFile
+	cfg.KeyFile = keyFile
+
+	return cfg
 }
 
 type mockLogger struct{}

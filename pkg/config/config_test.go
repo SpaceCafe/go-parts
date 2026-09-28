@@ -332,3 +332,15 @@ func TestAutoLoad_AllowUnknownFields(t *testing.T) {
 	require.NoError(t, config.AutoLoad(target, "test-app", "APP", config.WithAllowUnknownFields()))
 	assert.Equal(t, "app", target.Name)
 }
+
+func TestMustValidate(t *testing.T) {
+	t.Parallel()
+
+	assert.NotPanics(t, func() { config.MustValidate(&MockConfig{Port: 8080}) })
+
+	assert.PanicsWithError(
+		t,
+		"config: validation failed: *config_test.MockConfig: "+errInvalidPort.Error(),
+		func() { config.MustValidate(&MockConfig{}) },
+	)
+}

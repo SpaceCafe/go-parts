@@ -26,7 +26,7 @@ func TestRateLimit(t *testing.T) {
 			name: "allows requests within token bucket limit",
 			cfg: func(cfg *middleware.RateLimitConfig) {
 				cfg.BucketCapacity = 5
-				cfg.LeakRate = 0
+				cfg.LeakRate = 1
 				cfg.LeakInterval = time.Minute
 				cfg.ConcurrentRequestLimit = 10
 				cfg.RequestTimeout = time.Second
@@ -44,7 +44,7 @@ func TestRateLimit(t *testing.T) {
 			name: "rejects requests exceeding token bucket",
 			cfg: func(cfg *middleware.RateLimitConfig) {
 				cfg.BucketCapacity = 2
-				cfg.LeakRate = 0
+				cfg.LeakRate = 1
 				cfg.LeakInterval = time.Minute
 				cfg.ConcurrentRequestLimit = 10
 				cfg.RequestTimeout = time.Second
@@ -76,24 +76,6 @@ func TestRateLimit(t *testing.T) {
 				cfg.BucketCapacity = 10
 				cfg.LeakRate = 10
 				cfg.LeakInterval = time.Millisecond
-				cfg.ConcurrentRequestLimit = 0
-				cfg.RequestTimeout = time.Second
-			},
-			requestCount: 5,
-			wantStatus: []int{
-				http.StatusOK,
-				http.StatusOK,
-				http.StatusOK,
-				http.StatusOK,
-				http.StatusOK,
-			},
-		},
-		{
-			name: "no burst limit when set to 0",
-			cfg: func(cfg *middleware.RateLimitConfig) {
-				cfg.BucketCapacity = 0
-				cfg.LeakRate = 0
-				cfg.LeakInterval = time.Second
 				cfg.ConcurrentRequestLimit = 0
 				cfg.RequestTimeout = time.Second
 			},

@@ -143,12 +143,15 @@ func notEmptySlice[T any](err error) func([]T) error {
 	}
 }
 
-// CORS returns a middleware that enables Cross-Origin Resource Sharing (CORS).
+// CORS returns a middleware that enables Cross-Origin Resource Sharing (CORS). A nil cfg applies
+// the defaults. An invalid cfg panics (see config.MustValidate).
 func CORS(cfg *CORSConfig) httpserver.Middleware {
 	if cfg == nil {
 		cfg = &CORSConfig{}
 		cfg.SetDefaults()
 	}
+
+	config.MustValidate(cfg)
 
 	allowAllOrigins := containsWildcard(cfg.AllowedOrigins)
 
