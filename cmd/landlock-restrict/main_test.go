@@ -4,8 +4,12 @@ package main
 
 import (
 	"bytes"
+	"flag"
+	"io"
+	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -109,4 +113,28 @@ func TestCheckKernelSupport_WarnsAboutDegradedRights(t *testing.T) {
 		checkKernelSupport(&options{restrictBind: true, strict: true}),
 		errUnsupportedABI,
 	)
+}
+
+func TestPathList_SetRejectsMissingPaths(t *testing.T) {
+	t.Parallel()
+
+	existing := t.TempDir()
+	missing := filepath.Join(existing, "missing")
+
+	var paths pathList
+
+	flags := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.Var(&paths, "ro.dir", "")
+
+	require.ErrorIs(t, paths.Set(existing+listSeparator+missing), fs.ErrNotExist)
+	assert.Empty(t, paths, "a value with a missing path adds nothing")
+
+	// The flag package formats the Set error with %v, so only its text survives Parse.
+	err := flags.Parse([]string{"-ro.dir=" + missing})
+	require.ErrorContains(t, err, "-ro.dir")
+	require.ErrorContains(t, err, missing)
+
+	require.NoError(t, flags.Parse([]string{"-ro.dir=" + existing, "-ro.dir="}))
+	assert.Equal(t, pathList{existing}, paths)
 }

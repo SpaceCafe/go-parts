@@ -71,9 +71,19 @@ type options struct {
 type pathList []string
 
 // Set implements flag.Value. An empty value adds no path, which is how a kind of restriction is
-// enforced without allowing anything.
+// enforced without allowing anything. Landlock needs every path to exist, so a missing one is
+// rejected here, where the flag package names the flag, rather than later in RestrictPaths.
 func (p *pathList) Set(value string) error {
-	*p = append(*p, splitList(value)...)
+	paths := splitList(value)
+
+	for _, path := range paths {
+		_, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+	}
+
+	*p = append(*p, paths...)
 
 	return nil
 }
