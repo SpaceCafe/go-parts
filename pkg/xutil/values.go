@@ -37,8 +37,6 @@ func Default[T comparable](value, defaultValue T) T {
 }
 
 // DefaultSlice returns value if it's not empty, otherwise it returns defaultValue.
-//
-
 func DefaultSlice[T any](value, defaultValue []T) []T {
 	if len(value) == 0 {
 		return defaultValue
@@ -48,8 +46,6 @@ func DefaultSlice[T any](value, defaultValue []T) []T {
 }
 
 // DefaultMap returns value if it's not empty, otherwise it returns defaultValue.
-//
-
 func DefaultMap[K comparable, V any](value, defaultValue map[K]V) map[K]V {
 	if len(value) == 0 {
 		return defaultValue
