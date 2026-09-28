@@ -12,6 +12,9 @@ import (
 
 var _ Source = (*YAMLSource)(nil)
 
+// yamlSupported reports whether YAML support is compiled in, so configPaths includes YAML files.
+const yamlSupported = true
+
 // YAMLSource loads configuration from a YAML file.
 type YAMLSource struct {
 	Path string

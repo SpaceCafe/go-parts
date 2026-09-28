@@ -126,3 +126,24 @@ func TestCreateEnvName(t *testing.T) {
 		assert.Equal(t, "P_"+want, createEnvName("P", fieldName, ""), fieldName)
 	}
 }
+
+//nolint:paralleltest // Changes the working directory.
+func TestFindConfigSource_YAMLBuildTag(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	// A YAML file ahead of the JSON file in the search list, for example one written for another tool.
+	require.NoError(t, os.WriteFile("app.yaml", []byte("name: app\n"), 0o600))
+	require.NoError(t, os.WriteFile("config.json", []byte(`{}`), 0o600))
+
+	source, err := findConfigSource("app", "", false)
+	require.NoError(t, err)
+
+	if yamlSupported {
+		assert.NotEqual(t, &JSONSource{Path: "config.json"}, source)
+	} else {
+		assert.Equal(t, &JSONSource{Path: "config.json"}, source)
+
+		_, err = findConfigSource("app", "app.yaml", false)
+		require.ErrorContains(t, err, "with_yaml")
+	}
+}

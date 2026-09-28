@@ -234,38 +234,38 @@ func findConfigSource(name, configPath string, allowUnknownFields bool) (Source,
 }
 
 // configPaths generates a list of potential configuration file paths for the given application name.
+// Each location is tried as .json, then as .yml and .yaml when YAML support is compiled in.
 func configPaths(name string) []string {
-	filePaths := []string{
-		filepath.Join(".", name+".json"),
-		filepath.Join(".", name+".yml"),
-		filepath.Join(".", name+".yaml"),
-		filepath.Join(".", "config.json"),
-		filepath.Join(".", "config.yml"),
-		filepath.Join(".", "config.yaml"),
-		filepath.Join(".", "config", name+".json"),
-		filepath.Join(".", "config", name+".yml"),
-		filepath.Join(".", "config", name+".yaml"),
+	bases := []string{
+		filepath.Join(".", name),
+		filepath.Join(".", "config"),
+		filepath.Join(".", "config", name),
 	}
 
 	userDir, err := os.UserConfigDir()
 	if err == nil {
-		filePaths = append(filePaths,
-			filepath.Join(userDir, name+".json"),
-			filepath.Join(userDir, name+".yml"),
-			filepath.Join(userDir, name+".yaml"),
-			filepath.Join(userDir, name, "config.json"),
-			filepath.Join(userDir, name, "config.yml"),
-			filepath.Join(userDir, name, "config.yaml"))
+		bases = append(bases,
+			filepath.Join(userDir, name),
+			filepath.Join(userDir, name, "config"))
 	}
 
 	sysDir := systemConfigDir()
-	filePaths = append(filePaths,
-		filepath.Join(sysDir, name, "config.json"),
-		filepath.Join(sysDir, name, "config.yml"),
-		filepath.Join(sysDir, name, "config.yaml"),
-		filepath.Join(sysDir, name+".json"),
-		filepath.Join(sysDir, name+".yml"),
-		filepath.Join(sysDir, name+".yaml"))
+	bases = append(bases,
+		filepath.Join(sysDir, name, "config"),
+		filepath.Join(sysDir, name))
+
+	extensions := []string{".json"}
+	if yamlSupported {
+		extensions = append(extensions, ".yml", ".yaml")
+	}
+
+	filePaths := make([]string, 0, len(bases)*len(extensions))
+
+	for _, base := range bases {
+		for _, extension := range extensions {
+			filePaths = append(filePaths, base+extension)
+		}
+	}
 
 	return filePaths
 }
