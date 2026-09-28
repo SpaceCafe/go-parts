@@ -143,6 +143,14 @@ func (f *File) UnmarshalJSON(data []byte) error {
 }
 
 func (f *File) create(magicBytes []byte) {
+	// json.Unmarshal calls UnmarshalJSON again on the same File for a duplicate key. Remove the
+	// previous temporary directory, or nothing would ever clean it up.
+	if f.Cleanup != nil {
+		_ = f.Cleanup()
+	}
+
+	f.Cleanup = noopCleanup
+
 	err := f.verifyMagic(magicBytes)
 	if err != nil {
 		f.fail(http.StatusUnsupportedMediaType, err)

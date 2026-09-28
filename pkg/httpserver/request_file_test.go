@@ -275,6 +275,23 @@ func TestFile_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+func TestFile_UnmarshalJSON_DuplicateKeyRemovesPreviousTempDir(t *testing.T) {
+	t.Parallel()
+
+	var payload struct {
+		File httpserver.File `json:"file"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(`{"file":"first"}`), &payload))
+	firstDir := payload.File.Dir
+
+	require.NoError(t, json.Unmarshal([]byte(`{"file":"second"}`), &payload))
+	t.Cleanup(func() { _ = payload.File.Cleanup() })
+
+	assert.NoDirExists(t, firstDir)
+	assertContent(t, payload.File.Path, "second")
+}
+
 func TestBase64File_UnmarshalJSON(t *testing.T) {
 	t.Parallel()
 
