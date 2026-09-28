@@ -3,6 +3,9 @@
 package main
 
 import (
+	"bytes"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,4 +75,38 @@ func TestSplitList(t *testing.T) {
 	for value, want := range tests {
 		assert.Equal(t, want, splitList(value), value)
 	}
+}
+
+//nolint:paralleltest // Replaces the standard logger's output and the kernelABIVersion seam.
+func TestCheckKernelSupport_WarnsAboutDegradedRights(t *testing.T) {
+	var output bytes.Buffer
+
+	log.SetOutput(&output)
+
+	abi := kernelABIVersion
+
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+
+		kernelABIVersion = abi
+	})
+
+	// v6 enforces filesystem and TCP rules, but not the finer rights up to v9.
+	kernelABIVersion = func() (int, error) { return 6, nil }
+
+	for _, strict := range []bool{true, false} {
+		output.Reset()
+
+		require.NoError(t, checkKernelSupport(&options{restrictFS: true, strict: strict}))
+		assert.Contains(t, output.String(), "filesystem rules need v9", "strict=%v", strict)
+	}
+
+	// Strict mode still refuses a kernel that cannot enforce a requested kind at all.
+	kernelABIVersion = func() (int, error) { return 3, nil }
+
+	require.ErrorIs(
+		t,
+		checkKernelSupport(&options{restrictBind: true, strict: true}),
+		errUnsupportedABI,
+	)
 }

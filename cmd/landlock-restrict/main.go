@@ -42,6 +42,11 @@ const (
 
 var errUnsupportedABI = errors.New("kernel Landlock ABI too old")
 
+// kernelABIVersion is llsyscall.LandlockGetABIVersion, replaceable in tests to simulate a kernel.
+//
+//nolint:gochecknoglobals // Test seam for the kernel's Landlock ABI.
+var kernelABIVersion = llsyscall.LandlockGetABIVersion
+
 // listSeparator separates the entries within a single flag value, following the $PATH convention.
 // splitList splits on it with filepath.SplitList, so a path containing it cannot be expressed on
 // Unix, which is the trade-off $PATH makes as well.
@@ -133,17 +138,13 @@ func main() {
 // landlock.Config.Restrict call: Restrict enforces every kind the config knows about at once, which
 // would drag in V9 IPC scoping and would close a kind the caller never named.
 func applyRestrictions(opts *options) error {
-	if opts.strict {
-		err := requireMinimumABI(opts)
-		if err != nil {
-			return err
-		}
-	} else {
-		warnIfDegraded(opts)
+	err := checkKernelSupport(opts)
+	if err != nil {
+		return err
 	}
 
 	// Both modes enforce as much as the kernel supports. Strict mode differs only in refusing to run
-	// when a requested kind cannot be enforced at all, which requireMinimumABI checked above.
+	// when a requested kind cannot be enforced at all, which checkKernelSupport checked above.
 	if opts.restrictFS {
 		err := landlock.V9.BestEffort().RestrictPaths(fsRules(opts)...)
 		if err != nil {
@@ -166,12 +167,30 @@ func applyRestrictions(opts *options) error {
 	return nil
 }
 
+// checkKernelSupport compares the requested restrictions with what the kernel can enforce. Strict
+// mode fails when a requested kind cannot be enforced at all. Both modes then warn when a kind is
+// enforced with fewer rights than requested: strict mode accepts any kernel from the minimum ABI
+// on, so without the warning it would silently leave refer, truncate, ioctl or UNIX socket rights
+// unrestricted on an older kernel.
+func checkKernelSupport(opts *options) error {
+	if opts.strict {
+		err := requireMinimumABI(opts)
+		if err != nil {
+			return err
+		}
+	}
+
+	warnIfDegraded(opts)
+
+	return nil
+}
+
 // requireMinimumABI fails when the kernel cannot enforce a requested kind of restriction at all:
 // filesystem rules need Landlock ABI v1, TCP rules need v4. Newer ABIs only add finer rights, so a
 // kernel between the minimum and v9 enforces the requested kind with the rights it knows. Requiring
 // v9 outright would make strict mode fail on nearly every production kernel.
 func requireMinimumABI(opts *options) error {
-	kernelABI, err := llsyscall.LandlockGetABIVersion()
+	kernelABI, err := kernelABIVersion()
 	if err != nil {
 		return fmt.Errorf("landlock is not available: %w", err)
 	}
@@ -211,11 +230,11 @@ func newNetConfig(opts *options) (landlock.Config, error) {
 	return config.BestEffort(), nil
 }
 
-// warnIfDegraded prints a warning on stderr when best-effort mode will enforce less than was
-// requested, because the kernel lacks Landlock or supports an older ABI. Without it, a kernel
+// warnIfDegraded prints a warning on stderr when the kernel will enforce less than was requested,
+// because it lacks Landlock or supports an older ABI. Without it, a kernel
 // without Landlock would run the command completely unrestricted and silently.
 func warnIfDegraded(opts *options) {
-	kernelABI, err := llsyscall.LandlockGetABIVersion()
+	kernelABI, err := kernelABIVersion()
 	if err != nil {
 		log.Printf("warning: Landlock is not available (%v), running without restrictions", err)
 
