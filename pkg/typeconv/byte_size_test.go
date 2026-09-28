@@ -1,6 +1,7 @@
 package typeconv_test
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -194,5 +195,44 @@ func TestByteSize_TextRoundTrip(t *testing.T) {
 
 		require.NoError(t, parsed.UnmarshalText(text), string(text))
 		assert.Equal(t, size, parsed, string(text))
+	}
+}
+
+func TestByteSize_UnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		json    string
+		want    typeconv.ByteSize
+		wantErr bool
+	}{
+		"number":             {json: `{"size": 1073741824}`, want: typeconv.GiB},
+		"string":             {json: `{"size": "1GiB"}`, want: typeconv.GiB},
+		"null keeps value":   {json: `{"size": null}`, want: typeconv.KiB},
+		"negative number":    {json: `{"size": -1}`, wantErr: true},
+		"fractional number":  {json: `{"size": 1.5}`, wantErr: true},
+		"exponent number":    {json: `{"size": 1e9}`, wantErr: true},
+		"invalid string":     {json: `{"size": "lots"}`, wantErr: true},
+		"number above range": {json: `{"size": 18446744073709551616}`, wantErr: true},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			target := struct {
+				Size typeconv.ByteSize `json:"size"`
+			}{Size: typeconv.KiB}
+
+			err := json.Unmarshal([]byte(tt.json), &target)
+			if tt.wantErr {
+				require.ErrorIs(t, err, typeconv.ErrInvalidValue)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, target.Size)
+		})
 	}
 }

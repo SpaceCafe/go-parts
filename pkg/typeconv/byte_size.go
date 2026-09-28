@@ -1,6 +1,7 @@
 package typeconv
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -194,6 +195,39 @@ func (b ByteSize) String() string {
 // Uint64 returns the size as a plain uint64.
 func (b ByteSize) Uint64() uint64 {
 	return uint64(b)
+}
+
+// UnmarshalJSON implements json.Unmarshaler. It accepts a string such as "512MiB", parsed like
+// UnmarshalText, and a plain number of bytes, which must be a non-negative integer. encoding/json
+// would otherwise only pass strings to UnmarshalText and reject numbers. A null leaves b unchanged.
+func (b *ByteSize) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+
+	if len(data) > 0 && data[0] == '"' {
+		var text string
+
+		err := json.Unmarshal(data, &text)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidValue, err)
+		}
+
+		return b.UnmarshalText([]byte(text))
+	}
+
+	num, err := strconv.ParseUint(string(data), 10, 64)
+	if err != nil {
+		return fmt.Errorf(
+			"%w: byte size number must be a non-negative integer: %w",
+			ErrInvalidValue,
+			numErrCause(err),
+		)
+	}
+
+	*b = ByteSize(num)
+
+	return nil
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler, which is used by JSON and YAML decoders to
