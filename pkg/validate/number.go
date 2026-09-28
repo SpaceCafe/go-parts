@@ -16,6 +16,7 @@ var (
 	ErrDivisorZero    = errors.New("validate: divisor cannot be zero")
 	ErrNotMultipleOf  = errors.New("validate: value must be multiple of")
 	ErrNaN            = errors.New("validate: value must be a number, not NaN")
+	ErrNotInteger     = errors.New("validate: value must be a whole number")
 )
 
 type Integer interface {
@@ -114,13 +115,21 @@ func NonNegative[T Number](value T) error {
 	return nil
 }
 
-// Port validates that the provided numeric value is a valid port number (between 0 and 65535).
+// Port validates that the provided numeric value is a valid port number (between 0 and 65535). A
+// float must be a whole number, so 80.7 is rejected instead of being truncated to 80.
 func Port[T Number](value T) error {
 	if isNaN(value) {
 		return ErrNaN
 	}
 
-	return Between(0, math.MaxUint16)(int(value))
+	// float64 holds every port exactly, and unlike int(value) it has a defined result for large
+	// floats and infinities, which then fail the range check.
+	number := float64(value)
+	if number != math.Trunc(number) {
+		return ErrNotInteger
+	}
+
+	return Between[float64](0, math.MaxUint16)(number)
 }
 
 // Positive validates that the provided numeric value is positive (excluding zero).

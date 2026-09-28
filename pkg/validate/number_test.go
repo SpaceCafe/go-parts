@@ -240,6 +240,31 @@ func TestPort(t *testing.T) {
 	}
 }
 
+func TestPort_Float(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		wantErr error
+		name    string
+		value   float64
+	}{
+		{name: "whole number", value: 80},
+		{name: "fractional", value: 80.7, wantErr: validate.ErrNotInteger},
+		{name: "far above range", value: 1e30, wantErr: validate.ErrNotBetween},
+		{name: "infinity", value: math.Inf(1), wantErr: validate.ErrNotBetween},
+		{name: "negative infinity", value: math.Inf(-1), wantErr: validate.ErrNotBetween},
+		{name: "not a number", value: math.NaN(), wantErr: validate.ErrNaN},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			requireErr(t, tt.wantErr, validate.Port(tt.value))
+		})
+	}
+}
+
 func TestPositive(t *testing.T) {
 	t.Parallel()
 
