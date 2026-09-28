@@ -66,6 +66,13 @@ func TestResponseWriter_Abort_LogsError(t *testing.T) {
 			wantBody:   "Bad Request\n",
 		},
 		{
+			name:       "wrapped redacted error logs cause and hides it from client",
+			code:       http.StatusBadRequest,
+			err:        fmt.Errorf("load user: %w", httpserver.Redact(errCause)),
+			wantLogged: errCause,
+			wantBody:   "Bad Request\n",
+		},
+		{
 			name:       "server error logs cause and hides it from client",
 			code:       http.StatusInternalServerError,
 			err:        errCause,

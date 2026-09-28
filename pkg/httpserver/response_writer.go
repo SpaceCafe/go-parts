@@ -29,8 +29,9 @@ type ResponseWriter struct {
 
 // Abort logs the failure and writes an error response for code. Server errors (5xx) are logged at
 // error level, and their detail is withheld from the client to avoid leaking internals, whereas
-// client errors (4xx) are logged at info level and their detail is passed through. A Redacted error
-// renders as an empty string, so the error it wraps is logged in its place. A nil Log or Error
+// client errors (4xx) are logged at info level and their detail is passed through. When a Redacted
+// error occurs anywhere in the chain, the client gets only the status text, and the error it wraps
+// is logged in its place. A nil Log or Error
 // falls back to slog.Default and RenderErrorAsText.
 func (r *ResponseWriter) Abort(req *http.Request, code int, err error) {
 	logger := r.Log
@@ -43,7 +44,7 @@ func (r *ResponseWriter) Abort(req *http.Request, code int, err error) {
 		renderer = RenderErrorAsText
 	}
 
-	logErr := logError(err)
+	logErr, redacted := logError(err)
 	args := []any{"method", req.Method, "path", req.URL.Path, "status", code, "error", logErr}
 
 	if code >= http.StatusInternalServerError {
@@ -51,24 +52,32 @@ func (r *ResponseWriter) Abort(req *http.Request, code int, err error) {
 		renderer(r.ResponseWriter, req, code, nil)
 	} else {
 		logger.Info("httpserver: request failed", args...)
+
+		// A Redacted error wrapped by fmt.Errorf still renders the outer context ("load user: "), so
+		// the whole error is withheld and the renderer falls back to the status text.
+		if redacted {
+			err = nil
+		}
+
 		renderer(r.ResponseWriter, req, code, err)
 	}
 }
 
 // logError returns the error Abort should log: err itself, or for a Redacted error the error it
-// wraps, because the redacted error's own message is empty.
-func logError(err error) error {
+// wraps, because the redacted error's own message is empty. It also reports whether a Redacted
+// error occurs anywhere in the chain.
+func logError(err error) (error, bool) {
 	// errors.AsType cannot be used: Redacted does not embed error.
 	var redacted Redacted
 	if !errors.As(err, &redacted) {
-		return err
+		return err, false
 	}
 
 	if wrapper, ok := redacted.(interface{ Unwrap() error }); ok && wrapper.Unwrap() != nil {
-		return wrapper.Unwrap()
+		return wrapper.Unwrap(), true
 	}
 
-	return err
+	return err, true
 }
 
 // Flush sends buffered data to the client, satisfying http.Flusher for code that type-asserts the
