@@ -21,6 +21,11 @@ func NewLimitedBuffer(limit int64) *LimitedBuffer {
 	return &LimitedBuffer{limit: limit}
 }
 
+// Exceeded reports whether a write was rejected because it would have exceeded the limit.
+func (b *LimitedBuffer) Exceeded() bool {
+	return b.exceeded
+}
+
 // Read reads the buffered data.
 func (b *LimitedBuffer) Read(data []byte) (int, error) {
 	return b.buf.Read(data)

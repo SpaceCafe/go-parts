@@ -65,6 +65,7 @@ func TestLimitedBuffer_Write(t *testing.T) {
 			data, err := io.ReadAll(buf)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(data))
+			assert.Equal(t, tt.wantErr, buf.Exceeded())
 		})
 	}
 }
@@ -120,6 +121,7 @@ func TestLimitedBuffer_Copy(t *testing.T) {
 
 			data, readErr := io.ReadAll(buf)
 			require.NoError(t, readErr)
+			assert.Equal(t, tt.wantErr, buf.Exceeded())
 
 			if tt.wantErr {
 				require.ErrorIs(t, err, xutil.ErrBufferOverflow)
