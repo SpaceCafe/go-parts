@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spacecafe/go-parts/pkg/config"
@@ -254,4 +255,24 @@ func TestEnvSource_Load_SelfReferencingStruct(t *testing.T) {
 	}
 
 	require.NoError(t, config.EnvSource{Prefix: "APP"}.Load(&Node{}))
+}
+
+func TestEnvSource_GenerateTemplate(t *testing.T) {
+	t.Setenv("TPL_NAME", "from-env")
+
+	type TLS struct{ CertFile string }
+
+	target := &struct {
+		TLS  *TLS
+		Name string
+	}{}
+
+	var output strings.Builder
+
+	require.NoError(t, config.EnvSource{Prefix: "TPL"}.GenerateTemplate(target, &output))
+
+	// The optional section is listed although it is nil, and nothing is loaded into the target.
+	assert.Equal(t, "TPL_TLS_CERT_FILE=\nTPL_NAME=\n", output.String())
+	assert.Nil(t, target.TLS)
+	assert.Empty(t, target.Name)
 }

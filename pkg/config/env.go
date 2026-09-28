@@ -47,21 +47,25 @@ var (
 // because one is the other plus _FILE (Cert and CertFile), are rejected with ErrEnvNameCollision
 // before anything is loaded.
 type EnvSource struct {
-	names  *[]string
 	Prefix string
 }
 
+// GenerateTemplate writes one NAME= line per field, optional pointer sections included. It only
+// inspects the type of target, so it neither reads the environment nor changes target.
 func (s EnvSource) GenerateTemplate(target any, output io.Writer) error {
-	s.names = new([]string)
+	err := validatePointerToStruct(target)
+	if err != nil {
+		return err
+	}
 
-	err := s.Load(target)
+	names, err := s.envNames(reflect.TypeOf(target).Elem())
 	if err != nil {
 		return err
 	}
 
 	var errs []error
 
-	for _, name := range *s.names {
+	for _, name := range names {
 		_, err1 := output.Write([]byte(name))
 		_, err2 := output.Write([]byte("=\n"))
 		errs = append(errs, err1, err2)
@@ -77,21 +81,31 @@ func (s EnvSource) Load(target any) error {
 	}
 
 	valueOf := reflect.ValueOf(target).Elem()
-	prefix := strings.ToUpper(s.Prefix)
 
-	var names []string
-
-	err = collectEnvNames(valueOf.Type(), prefix, map[reflect.Type]bool{}, &names)
+	_, err = s.envNames(valueOf.Type())
 	if err != nil {
 		return err
+	}
+
+	return s.loadStruct(valueOf, strings.ToUpper(s.Prefix))
+}
+
+// envNames returns the env names of all leaf fields of typeOf and rejects reserved and colliding
+// names, without reading the environment.
+func (s EnvSource) envNames(typeOf reflect.Type) ([]string, error) {
+	var names []string
+
+	err := collectEnvNames(typeOf, strings.ToUpper(s.Prefix), map[reflect.Type]bool{}, &names)
+	if err != nil {
+		return nil, err
 	}
 
 	err = checkEnvNameCollisions(names)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return s.loadStruct(valueOf, prefix)
+	return names, nil
 }
 
 // collectEnvNames appends the env names of all leaf fields of typeOf to names, following the same
@@ -231,10 +245,6 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 			}
 
 			continue
-		}
-
-		if s.names != nil {
-			*s.names = append(*s.names, envName)
 		}
 
 		err := loadField(field, envName)
