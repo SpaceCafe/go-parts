@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -160,6 +161,24 @@ func TestHTTPServer_Start_InvalidKeyPair(t *testing.T) {
 	)
 
 	require.ErrorIs(t, server.Start(context.Background()), fs.ErrNotExist)
+}
+
+func TestHTTPServer_Start_PortInUse(t *testing.T) {
+	t.Parallel()
+
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	server := httpserver.New(
+		&httpserver.Config{Host: "127.0.0.1", Port: addr.Port},
+		httpserver.WithLogger(&mockLogger{}),
+	)
+
+	require.ErrorIs(t, server.Start(context.Background()), syscall.EADDRINUSE)
 }
 
 func TestNew_ListenAddress(t *testing.T) {

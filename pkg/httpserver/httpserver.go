@@ -9,16 +9,12 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/spacecafe/go-parts/pkg/log"
 	"github.com/spacecafe/go-parts/pkg/shutdown"
 )
-
-// StartupCheckTimeout is how long Start waits for the listener goroutine to report an early
-// failure (for example, a port already in use) before treating the server as successfully started.
-const StartupCheckTimeout = 100 * time.Millisecond
 
 var (
 	_ shutdown.Trackable = (*HTTPServer)(nil)
@@ -68,8 +64,8 @@ func New(cfg *Config, opts ...Option) *HTTPServer {
 	}
 
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
-		// Certificates stay empty on purpose: Start passes the file paths to ListenAndServeTLS, which
-		// loads and parses the key pair before listening, so a bad file fails Start immediately.
+		// Certificates stay empty on purpose: Start passes the file paths to ServeTLS, which loads
+		// and parses the key pair before accepting connections, so a bad file fails Start.
 		obj.Server.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
@@ -86,10 +82,10 @@ func New(cfg *Config, opts ...Option) *HTTPServer {
 	return obj
 }
 
-// Start launches the server in a background goroutine and returns once it is listening. It blocks
-// only for StartupCheckTimeout, so an immediate bind failure surfaces as an error, while a later
-// failure is logged rather than returned. A server cannot be started again after Stop; Start then
-// fails with ErrServerStopped, and a new HTTPServer is needed.
+// Start binds the listen address and returns once the server accepts connections, which then runs
+// in a background goroutine. Bind and key pair errors are returned, while a failure after startup
+// is logged. A server cannot be started again after Stop; Start then fails with ErrServerStopped,
+// and a new HTTPServer is needed.
 func (s *HTTPServer) Start(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrInvalidContext
@@ -99,28 +95,44 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		return ErrServerStopped
 	}
 
-	errCh := make(chan error, 1)
-
 	s.setupRouter()
 
-	go func() {
-		s.Log.Info(
-			"httpserver: starting HTTP server",
-			"host", s.cfg.Host,
-			"port", s.cfg.Port,
-			"protocols", s.Server.Protocols.String(),
-		)
+	s.Log.Info(
+		"httpserver: starting HTTP server",
+		"host", s.cfg.Host,
+		"port", s.cfg.Port,
+		"protocols", s.Server.Protocols.String(),
+	)
 
+	addr := s.Server.Addr
+	if addr == "" {
+		addr = ":http"
+	}
+
+	// Listening here instead of in ListenAndServe returns bind errors directly, without a timer.
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("httpserver: failed to listen on %s: %w", addr, err)
+	}
+
+	ready := &readyListener{Listener: listener, ready: make(chan struct{})}
+	errCh := make(chan error, 1)
+
+	go func() {
 		if s.Server.TLSConfig == nil {
-			errCh <- s.Server.ListenAndServe()
+			errCh <- s.Server.Serve(ready)
 		} else {
-			errCh <- s.Server.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile)
+			errCh <- s.Server.ServeTLS(ready, s.cfg.CertFile, s.cfg.KeyFile)
 		}
 	}()
 
-	// Wait briefly to catch early initialization errors.
+	// Serve and ServeTLS return before their first Accept when the key pair fails to load or the
+	// server was already shut down, so whichever channel fires first decides the outcome.
 	select {
 	case err := <-errCh:
+		// ServeTLS does not close the listener when the key pair fails to load.
+		_ = listener.Close()
+
 		// ErrServerClosed this early means the server was shut down before it ever served, for
 		// example through Server.Shutdown, which Stop cannot see.
 		if errors.Is(err, http.ErrServerClosed) {
@@ -128,7 +140,7 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		}
 
 		return err
-	case <-time.After(StartupCheckTimeout):
+	case <-ready.ready:
 		go func() {
 			err := <-errCh
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -154,6 +166,21 @@ func (s *HTTPServer) Stop(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// readyListener closes ready on the first Accept call, which marks the point where Serve has passed
+// its own startup checks and is accepting connections.
+type readyListener struct {
+	net.Listener
+
+	ready chan struct{}
+	once  sync.Once
+}
+
+func (l *readyListener) Accept() (net.Conn, error) {
+	l.once.Do(func() { close(l.ready) })
+
+	return l.Listener.Accept() //nolint:wrapcheck // Serve inspects the raw error.
 }
 
 // setupRouter injects the server's logger and error renderer into the handler when it implements
