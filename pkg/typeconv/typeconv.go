@@ -1,6 +1,7 @@
 package typeconv
 
 import (
+	"cmp"
 	"encoding"
 	"errors"
 	"fmt"
@@ -16,7 +17,14 @@ var (
 	ErrInvalidValue    = errors.New("typeconv: invalid value")
 )
 
-// Converter handles conversion of string values to various Go types.
+const (
+	defaultSliceSeparator       = ","
+	defaultMapKeyValueSeparator = "="
+	defaultTimeLayout           = time.RFC3339
+)
+
+// Converter handles conversion of string values to various Go types. An empty field falls back to
+// its default, so a zero-value Converter behaves like New.
 type Converter struct {
 	// SliceSeparator is the string used to split slice values. Default is ",".
 	SliceSeparator string
@@ -31,9 +39,9 @@ type Converter struct {
 // New creates a new Converter with default settings.
 func New() *Converter {
 	return &Converter{
-		SliceSeparator:       ",",
-		MapKeyValueSeparator: "=",
-		TimeLayout:           time.RFC3339,
+		SliceSeparator:       defaultSliceSeparator,
+		MapKeyValueSeparator: defaultMapKeyValueSeparator,
+		TimeLayout:           defaultTimeLayout,
 	}
 }
 
@@ -81,6 +89,12 @@ func MustConvertTo[T any](value string) T {
 	return result
 }
 
+// mapKeyValueSeparator returns MapKeyValueSeparator, or its default when empty. An empty separator
+// would put every entry into the value under an empty key.
+func (c *Converter) mapKeyValueSeparator() string {
+	return cmp.Or(c.MapKeyValueSeparator, defaultMapKeyValueSeparator)
+}
+
 // setField sets the field value from the string.
 func (c *Converter) setField(field reflect.Value, value string) error {
 	if field.Type() == reflect.TypeFor[time.Duration]() {
@@ -88,7 +102,7 @@ func (c *Converter) setField(field reflect.Value, value string) error {
 	}
 
 	if field.Type() == reflect.TypeFor[time.Time]() {
-		return setTime(field, value, c.TimeLayout)
+		return setTime(field, value, c.timeLayout())
 	}
 
 	// Check if the type implements encoding.TextUnmarshaler
@@ -149,7 +163,7 @@ func (c *Converter) setMap(field reflect.Value, value string) error {
 		return nil
 	}
 
-	entries, err := parseMapEntries(value, c.MapKeyValueSeparator)
+	entries, err := parseMapEntries(value, c.mapKeyValueSeparator())
 	if err != nil {
 		return err
 	}
@@ -188,7 +202,7 @@ func (c *Converter) setSlice(field reflect.Value, value string) error {
 		return nil
 	}
 
-	parts := strings.Split(value, c.SliceSeparator)
+	parts := strings.Split(value, c.sliceSeparator())
 	slice := reflect.MakeSlice(field.Type(), len(parts), len(parts))
 
 	for i, part := range parts {
@@ -210,6 +224,17 @@ func (c *Converter) setSlice(field reflect.Value, value string) error {
 	field.Set(slice)
 
 	return nil
+}
+
+// sliceSeparator returns SliceSeparator, or its default when empty. An empty separator would split
+// the value into single characters.
+func (c *Converter) sliceSeparator() string {
+	return cmp.Or(c.SliceSeparator, defaultSliceSeparator)
+}
+
+// timeLayout returns TimeLayout, or its default when empty. An empty layout rejects every time.
+func (c *Converter) timeLayout() string {
+	return cmp.Or(c.TimeLayout, defaultTimeLayout)
 }
 
 // parseMapEntries parses a string of key-value pairs separated by unquoted whitespace.

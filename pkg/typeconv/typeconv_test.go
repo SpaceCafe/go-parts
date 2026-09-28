@@ -846,3 +846,24 @@ func TestConvertTo_MapWhitespace(t *testing.T) {
 	assert.NotContains(t, err.Error(), "hunter2")
 	assert.Contains(t, err.Error(), "map entry 1")
 }
+
+func TestConverter_ZeroValueUsesDefaults(t *testing.T) {
+	t.Parallel()
+
+	converter := &typeconv.Converter{}
+
+	var slice []string
+
+	require.NoError(t, converter.Convert(reflect.ValueOf(&slice).Elem(), "ab,cd"))
+	assert.Equal(t, []string{"ab", "cd"}, slice)
+
+	var entries map[string]string
+
+	require.NoError(t, converter.Convert(reflect.ValueOf(&entries).Elem(), "a=1 b=2"))
+	assert.Equal(t, map[string]string{"a": "1", "b": "2"}, entries)
+
+	var when time.Time
+
+	require.NoError(t, converter.Convert(reflect.ValueOf(&when).Elem(), "2026-09-28T10:00:00Z"))
+	assert.Equal(t, time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC), when)
+}
