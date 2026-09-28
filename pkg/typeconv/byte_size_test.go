@@ -71,7 +71,10 @@ func TestByteSize_MarshalText(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "zero bytes", size: 0, want: []byte("0B"), wantErr: false},
-		{name: "one gibibyte", size: typeconv.GiB, want: []byte("1.0GiB"), wantErr: false},
+		{name: "one gibibyte", size: typeconv.GiB, want: []byte("1GiB"), wantErr: false},
+		{name: "one megabyte", size: 1_000_000, want: []byte("1MB"), wantErr: false},
+		{name: "prefers the larger unit", size: 1_024_000, want: []byte("1000KiB"), wantErr: false},
+		{name: "no exact unit", size: 1536 + 1, want: []byte("1537B"), wantErr: false},
 	}
 
 	for _, tt := range tests {
@@ -175,4 +178,21 @@ func TestParseByteSize_Overflow(t *testing.T) {
 	size, err := typeconv.ParseByteSize("15EiB")
 	require.NoError(t, err)
 	require.Equal(t, 15*typeconv.EiB, size)
+}
+
+func TestByteSize_TextRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, size := range []typeconv.ByteSize{
+		0, 1, 1536, 1_000_000, 1_000_001, typeconv.GiB + 1, 15 * typeconv.EiB,
+		1<<53 + 1, math.MaxUint64,
+	} {
+		text, err := size.MarshalText()
+		require.NoError(t, err)
+
+		var parsed typeconv.ByteSize
+
+		require.NoError(t, parsed.UnmarshalText(text), string(text))
+		assert.Equal(t, size, parsed, string(text))
+	}
 }

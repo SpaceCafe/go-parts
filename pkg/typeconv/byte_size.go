@@ -29,38 +29,43 @@ const (
 	EiB ByteSize = 1024 * PiB
 )
 
-//nolint:gochecknoglobals // byteSuffixes maps unit strings to their byte multiplier.
-var byteSuffixes = map[string]float64{
-	// IEC binary
-	"eib": float64(EiB),
-	"pib": float64(PiB),
-	"tib": float64(TiB),
-	"gib": float64(GiB),
-	"mib": float64(MiB),
-	"kib": float64(KiB),
-	"ei":  float64(EiB),
-	"pi":  float64(PiB),
-	"ti":  float64(TiB),
-	"gi":  float64(GiB),
-	"mi":  float64(MiB),
-	"ki":  float64(KiB),
-	// SI decimal
-	"eb": float64(EB),
-	"pb": float64(PB),
-	"tb": float64(TB),
-	"gb": float64(GB),
-	"mb": float64(MB),
-	"kb": float64(KB),
-	"e":  float64(EB),
-	"p":  float64(PB),
-	"t":  float64(TB),
-	"g":  float64(GB),
-	"m":  float64(MB),
-	"k":  float64(KB),
-	// Explicit bytes
-	"b": 1,
-	"":  1,
+// byteUnits lists every unit, largest first, as MarshalText writes it.
+//
+//nolint:gochecknoglobals // Read-only unit table.
+var byteUnits = []struct {
+	suffix string
+	size   ByteSize
+}{
+	{"EiB", EiB},
+	{"EB", EB},
+	{"PiB", PiB},
+	{"PB", PB},
+	{"TiB", TiB},
+	{"TB", TB},
+	{"GiB", GiB},
+	{"GB", GB},
+	{"MiB", MiB},
+	{"MB", MB},
+	{"KiB", KiB},
+	{"KB", KB},
 }
+
+// byteSuffixes maps each lower-case suffix ParseByteSize accepts to its unit: every unit in
+// byteUnits with and without the trailing "b" ("kib", "ki", "kb", "k"), and "b" or no suffix for
+// plain bytes.
+//
+//nolint:gochecknoglobals // Read-only lookup built from byteUnits.
+var byteSuffixes = func() map[string]ByteSize {
+	suffixes := map[string]ByteSize{"b": 1, "": 1}
+
+	for _, unit := range byteUnits {
+		suffix := strings.ToLower(unit.suffix)
+		suffixes[suffix] = unit.size
+		suffixes[strings.TrimSuffix(suffix, "b")] = unit.size
+	}
+
+	return suffixes
+}()
 
 // ParseByteSize parses a size such as "512", "1.5GB" or "4_096KiB". The number may use "." as the
 // decimal point and "_" to group digits; the optional suffix is an SI (k, M, G, …) or IEC (Ki, Mi,
@@ -91,17 +96,19 @@ func ParseByteSize(input string) (ByteSize, error) {
 		numStr.WriteRune(char)
 	}
 
+	// An integer is parsed exactly: float64 has 53 bits of precision, so larger byte counts, such as
+	// the ones MarshalText writes, would otherwise change.
+	if !strings.Contains(numStr.String(), ".") {
+		return parseIntegerByteSize(numStr.String(), suffix)
+	}
+
 	num, err := strconv.ParseFloat(numStr.String(), 64)
 	if err != nil {
-		return 0, fmt.Errorf(
-			"%w: cannot parse byte size number: %w",
-			ErrInvalidValue,
-			numErrCause(err),
-		)
+		return 0, byteSizeNumberError(err)
 	}
 
 	if multiplier, ok := byteSuffixes[suffix]; ok {
-		resultFloat := num * multiplier
+		resultFloat := num * float64(multiplier)
 
 		// Check for float64 and uint64 overflow. float64(math.MaxUint64) rounds up to 2^64, which does
 		// not fit, so the comparison must be >=.
@@ -115,6 +122,31 @@ func ParseByteSize(input string) (ByteSize, error) {
 	return 0, fmt.Errorf("%w: unknown byte size suffix", ErrInvalidValue)
 }
 
+// parseIntegerByteSize multiplies the integer numStr by the unit of suffix without going through
+// float64.
+func parseIntegerByteSize(numStr, suffix string) (ByteSize, error) {
+	num, err := strconv.ParseUint(numStr, 10, 64)
+	if err != nil {
+		return 0, byteSizeNumberError(err)
+	}
+
+	multiplier, ok := byteSuffixes[suffix]
+	if !ok {
+		return 0, fmt.Errorf("%w: unknown byte size suffix", ErrInvalidValue)
+	}
+
+	if num > math.MaxUint64/uint64(multiplier) {
+		return 0, fmt.Errorf("%w: byte size overflows", ErrInvalidValue)
+	}
+
+	return ByteSize(num) * multiplier, nil
+}
+
+// byteSizeNumberError wraps a failure to parse the number part of a byte size.
+func byteSizeNumberError(err error) error {
+	return fmt.Errorf("%w: cannot parse byte size number: %w", ErrInvalidValue, numErrCause(err))
+}
+
 // Int64 returns the size as an int64. It returns math.MaxInt64 if the value overflows.
 func (b ByteSize) Int64() int64 {
 	if b > ByteSize(math.MaxInt64) {
@@ -124,9 +156,19 @@ func (b ByteSize) Int64() int64 {
 	return int64(b)
 }
 
-// MarshalText implements encoding.TextMarshaler.
+// MarshalText implements encoding.TextMarshaler. Unlike String, it is exact, so the value survives a
+// round trip through UnmarshalText: it uses the largest IEC or SI unit that divides the size evenly
+// ("1GiB", "1MB"), or plain bytes ("1537B").
 func (b ByteSize) MarshalText() ([]byte, error) {
-	return []byte(b.String()), nil
+	if b != 0 {
+		for _, unit := range byteUnits {
+			if b%unit.size == 0 {
+				return []byte(strconv.FormatUint(uint64(b/unit.size), 10) + unit.suffix), nil
+			}
+		}
+	}
+
+	return []byte(strconv.FormatUint(uint64(b), 10) + "B"), nil
 }
 
 // String returns a human-readable IEC representation (e.g. "1.5GiB").
