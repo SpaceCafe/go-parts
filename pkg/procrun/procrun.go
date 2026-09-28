@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"slices"
 	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
@@ -67,8 +66,6 @@ type Runner struct {
 
 	// cfg holds configuration settings.
 	cfg *Config
-
-	args []string
 }
 
 // New creates a Runner from cfg and applies the given options. A nil cfg applies the defaults. An
@@ -151,7 +148,7 @@ func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
 		defer cancel()
 	}
 
-	execCmd := r.createExecCommand(cmdCtx, cmd, result.WorkDir)
+	execCmd := r.createExecCommand(cmdCtx, cmd, result)
 
 	applyProcessAttributes(r, execCmd)
 
@@ -245,13 +242,24 @@ func (r *Runner) commandEnv(cmd *Command) []string {
 }
 
 // createExecCommand creates the *exec.Cmd with all I/O and env wired up.
-func (r *Runner) createExecCommand(ctx context.Context, cmd *Command, workDir string) *exec.Cmd {
-	args := append(slices.Clone(r.args), cmd.Path)
+func (r *Runner) createExecCommand(ctx context.Context, cmd *Command, result *Result) *exec.Cmd {
+	// The process must be able to use the temporary work dir procrun created for it, also when
+	// Restrictions.RWDirs is narrowed. A Command.Dir chosen by the caller is not added; it belongs in
+	// Restrictions like any other path.
+	var workDirs []string
+	if result.IsTempDir {
+		workDirs = []string{result.WorkDir}
+	}
+
+	args := sandboxArgs(r.cfg, workDirs...)
+	r.Log.Debug("procrun: sandbox args", "args", args)
+
+	args = append(args, cmd.Path)
 	args = append(args, cmd.Args...)
 
 	//nolint:gosec // G204: cmd.Path and cmd.Args are intentionally dynamic, this package is a process runner by design.
 	execCmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	execCmd.Dir = workDir
+	execCmd.Dir = result.WorkDir
 	execCmd.Env = r.commandEnv(cmd)
 	execCmd.Stdin = cmd.Stdin
 	execCmd.Stdout = cmd.Stdout

@@ -68,7 +68,9 @@ type Limits struct {
 // The target is executed inside the sandbox, so once RWDirs is narrowed from "/", the allowlist
 // must grant read access to the target binary and everything it loads: for a dynamically linked
 // binary that is typically RODirs "/usr", "/lib", "/lib64" and ROFiles "/etc/ld.so.cache". prlimit
-// runs before the sandbox and needs no entry.
+// runs before the sandbox and needs no entry. The temporary work dir that Run creates when
+// Command.Dir is empty is always granted read-write access; a Command.Dir set by the caller is not,
+// so list it in RWDirs or RODirs.
 type Restrictions struct {
 	// BindTCP lists the TCP ports the process may bind to. Only consulted when RestrictBindTCP is
 	// true.

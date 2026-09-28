@@ -28,6 +28,11 @@ func applyArguments(runner *Runner) error {
 	return nil
 }
 
+// sandboxArgs returns no arguments: prlimit and landlock-restrict are Unix tools.
+func sandboxArgs(*Config, ...string) []string {
+	return nil
+}
+
 // applyProcessAttributes applies the required process attributes to the given command. There are
 // none outside Unix.
 func applyProcessAttributes(_ *Runner, _ *exec.Cmd) {}

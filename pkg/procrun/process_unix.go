@@ -5,6 +5,7 @@ package procrun
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -23,25 +24,32 @@ const (
 	listSeparator = string(os.PathListSeparator)
 )
 
-// applyArguments configures a Runner's arguments based on its configuration. A helper binary that
-// is not configured is skipped, so its restrictions are not applied but the command still runs, as
-// checkCapabilities warns.
+// applyArguments checks that the sandbox can be set up for the Runner's configuration. On Unix
+// every configuration can; the arguments themselves are built per run by sandboxArgs.
+func applyArguments(_ *Runner) error {
+	return nil
+}
+
+// sandboxArgs returns the helper binaries and their arguments that wrap a command. A helper binary
+// that is not configured is skipped, so its restrictions are not applied but the command still
+// runs, as checkCapabilities warns. extraRWDirs are granted read-write access on top of
+// Restrictions.RWDirs, such as the temporary work dir of a run.
 //
 // prlimit runs first, outside the sandbox, so its own binary and libraries need no allowlist entry.
 // The limits it sets survive the exec into landlock-restrict and the target. landlock-restrict runs
 // last, so only the target itself runs inside the sandbox.
-func applyArguments(runner *Runner) error {
-	if runner.cfg.PrlimitBin != "" {
-		runner.args = append(runner.args, prlimitArgs(runner.cfg)...)
+func sandboxArgs(cfg *Config, extraRWDirs ...string) []string {
+	var args []string
+
+	if cfg.PrlimitBin != "" {
+		args = append(args, prlimitArgs(cfg)...)
 	}
 
-	if runner.cfg.LandlockBin != "" {
-		runner.args = append(runner.args, landlockArgs(runner.cfg)...)
+	if cfg.LandlockBin != "" {
+		args = append(args, landlockArgs(cfg, extraRWDirs...)...)
 	}
 
-	runner.Log.Debug("procrun: created args to restrict processes", "args", runner.args)
-
-	return nil
+	return args
 }
 
 // applyProcessAttributes applies the required process attributes to the given command. It cannot
@@ -99,8 +107,9 @@ func wasKilled(state *os.ProcessState) bool {
 	return ok && status.Signaled() && status.Signal() == syscall.SIGKILL
 }
 
-// landlockArgs constructs a list of command-line arguments based on the filesystem restrictions defined in the Config.
-func landlockArgs(cfg *Config) []string {
+// landlockArgs returns the landlock-restrict invocation for cfg, granting extraRWDirs read-write
+// access in addition to Restrictions.RWDirs.
+func landlockArgs(cfg *Config, extraRWDirs ...string) []string {
 	//nolint:mnd // Max number of arguments
 	args := make([]string, 0, 8)
 
@@ -110,7 +119,10 @@ func landlockArgs(cfg *Config) []string {
 		"-ro.file="+strings.Join(cfg.Restrictions.ROFiles, listSeparator),
 		"-rw.file="+strings.Join(cfg.Restrictions.RWFiles, listSeparator),
 		"-ro.dir="+strings.Join(cfg.Restrictions.RODirs, listSeparator),
-		"-rw.dir="+strings.Join(cfg.Restrictions.RWDirs, listSeparator),
+		"-rw.dir="+strings.Join(
+			append(slices.Clone(cfg.Restrictions.RWDirs), extraRWDirs...),
+			listSeparator,
+		),
 	)
 
 	if cfg.Restrictions.RestrictBindTCP {

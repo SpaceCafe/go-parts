@@ -3,7 +3,6 @@
 package procrun
 
 import (
-	"os/exec"
 	"testing"
 	"time"
 
@@ -25,35 +24,32 @@ func TestLandlockArgs_Strict(t *testing.T) {
 	assert.Equal(t, "--", args[len(args)-1])
 }
 
-func TestApplyArguments_PrlimitBeforeLandlock(t *testing.T) {
+func TestSandboxArgs_PrlimitBeforeLandlock(t *testing.T) {
 	t.Parallel()
-
-	// New validates the config, which needs both binaries on PATH. TestMain builds landlock-restrict.
-	for _, bin := range []string{DefaultLandlockBin, DefaultPrlimitBin} {
-		_, err := exec.LookPath(bin)
-		if err != nil {
-			t.Skipf("%s not found: %v", bin, err)
-		}
-	}
 
 	cfg := &Config{}
 	cfg.SetDefaults()
 
-	// New resolves both binaries to absolute paths in cfg.
-	runner := New(cfg, WithLogger(discardLogger{}))
+	args := sandboxArgs(cfg)
 
-	assert.Equal(t, cfg.PrlimitBin, runner.args[0])
-	assert.Equal(t, "--", runner.args[len(runner.args)-1])
-	assert.Equal(t, prlimitArgs(cfg), runner.args[:len(prlimitArgs(cfg))])
-	assert.Equal(t, landlockArgs(cfg), runner.args[len(prlimitArgs(cfg)):])
+	assert.Equal(t, cfg.PrlimitBin, args[0])
+	assert.Equal(t, "--", args[len(args)-1])
+	assert.Equal(t, prlimitArgs(cfg), args[:len(prlimitArgs(cfg))])
+	assert.Equal(t, landlockArgs(cfg), args[len(prlimitArgs(cfg)):])
 }
 
-type discardLogger struct{}
+func TestSandboxArgs_ExtraRWDirs(t *testing.T) {
+	t.Parallel()
 
-func (discardLogger) Debug(string, ...any) {}
-func (discardLogger) Error(string, ...any) {}
-func (discardLogger) Info(string, ...any)  {}
-func (discardLogger) Warn(string, ...any)  {}
+	cfg := &Config{}
+	cfg.SetDefaults()
+	cfg.Restrictions.RWDirs = []string{"/srv/data"}
+
+	args := sandboxArgs(cfg, "/tmp/work")
+
+	assert.Contains(t, args, "-rw.dir=/srv/data"+listSeparator+"/tmp/work")
+	assert.Equal(t, []string{"/srv/data"}, cfg.Restrictions.RWDirs, "config must stay unchanged")
+}
 
 func TestPrlimitArgs_CPU(t *testing.T) {
 	t.Parallel()
