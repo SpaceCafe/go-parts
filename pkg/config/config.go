@@ -63,6 +63,11 @@ type pointerDefaultable[T any] interface {
 //   - -config <path> names the config file; it must exist.
 //   - -generate-template[=<path>] writes a template (default config.tmpl.json) and exits.
 //
+// Without -config, AutoLoad uses the first file it finds in the user config directory, then in the
+// system config directory (/etc on Unix). The working directory is searched first only with
+// WithWorkingDir, since a binary started from an untrusted directory would otherwise load a config
+// file placed there.
+//
 // Both flags are also registered on flag.CommandLine unless already defined, so an application that
 // calls flag.Parse itself (before or after AutoLoad) accepts them. AutoLoad never calls flag.Parse.
 //
@@ -92,7 +97,7 @@ func AutoLoad(target Validatable, name, envPrefix string, opts ...Option) error 
 
 	sources := []Source{}
 
-	source, err := findConfigSource(name, args.configPath, settings.allowUnknownFields)
+	source, err := findConfigSource(name, args.configPath, settings)
 	if err != nil {
 		return err
 	}
@@ -207,7 +212,9 @@ func New[T any, PT pointerDefaultable[T]]() *T {
 // without error means no file was found.
 //
 //nolint:ireturn // Returns whichever Source matches the file suffix.
-func findConfigSource(name, configPath string, allowUnknownFields bool) (Source, error) {
+func findConfigSource(name, configPath string, settings *options) (Source, error) {
+	allowUnknownFields := settings.allowUnknownFields
+
 	if configPath != "" {
 		_, err := os.Stat(configPath)
 		if err != nil {
@@ -217,7 +224,7 @@ func findConfigSource(name, configPath string, allowUnknownFields bool) (Source,
 		return sourceFromSuffix(configPath, allowUnknownFields)
 	}
 
-	for _, filePath := range configPaths(name) {
+	for _, filePath := range configPaths(name, settings.workingDir) {
 		_, err := os.Stat(filePath)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -234,12 +241,16 @@ func findConfigSource(name, configPath string, allowUnknownFields bool) (Source,
 }
 
 // configPaths generates a list of potential configuration file paths for the given application name.
-// Each location is tried as .json, then as .yml and .yaml when YAML support is compiled in.
-func configPaths(name string) []string {
-	bases := []string{
-		filepath.Join(".", name),
-		filepath.Join(".", "config"),
-		filepath.Join(".", "config", name),
+// Each location is tried as .json, then as .yml and .yaml when YAML support is compiled in. The
+// working directory comes first, but only when workingDir is set (see WithWorkingDir).
+func configPaths(name string, workingDir bool) []string {
+	var bases []string
+
+	if workingDir {
+		bases = append(bases,
+			filepath.Join(".", name),
+			filepath.Join(".", "config"),
+			filepath.Join(".", "config", name))
 	}
 
 	userDir, err := os.UserConfigDir()

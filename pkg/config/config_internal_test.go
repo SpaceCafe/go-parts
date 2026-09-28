@@ -11,6 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// cwdOptions searches the working directory, which the tests below populate.
+//
+//nolint:gochecknoglobals // Shared, read-only test settings.
+var cwdOptions = &options{workingDir: true}
+
 //nolint:paralleltest // Changes the working directory.
 func TestFindConfigSource(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -18,7 +23,7 @@ func TestFindConfigSource(t *testing.T) {
 	require.NoError(t, os.WriteFile("config.json", []byte(`{}`), 0o600))
 
 	t.Run("explicit path that does not exist", func(t *testing.T) {
-		_, err := findConfigSource("app", filepath.Join(t.TempDir(), "missing.json"), false)
+		_, err := findConfigSource("app", filepath.Join(t.TempDir(), "missing.json"), cwdOptions)
 		require.ErrorIs(t, err, ErrConfigNotFound)
 		require.ErrorIs(t, err, fs.ErrNotExist)
 	})
@@ -27,13 +32,13 @@ func TestFindConfigSource(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "explicit.json")
 		require.NoError(t, os.WriteFile(path, []byte(`{}`), 0o600))
 
-		source, err := findConfigSource("app", path, false)
+		source, err := findConfigSource("app", path, cwdOptions)
 		require.NoError(t, err)
 		assert.Equal(t, &JSONSource{Path: path}, source)
 	})
 
 	t.Run("search list without explicit path", func(t *testing.T) {
-		source, err := findConfigSource("app", "", false)
+		source, err := findConfigSource("app", "", cwdOptions)
 		require.NoError(t, err)
 		assert.Equal(t, &JSONSource{Path: "config.json"}, source)
 	})
@@ -47,7 +52,7 @@ func TestFindConfigSource(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod("config", 0o700) })
 		require.NoError(t, os.Remove("config.json"))
 
-		_, err := findConfigSource("app", "", false)
+		_, err := findConfigSource("app", "", cwdOptions)
 		require.ErrorIs(t, err, ErrConfigNotFound)
 		require.ErrorIs(t, err, fs.ErrPermission)
 	})
@@ -135,7 +140,7 @@ func TestFindConfigSource_YAMLBuildTag(t *testing.T) {
 	require.NoError(t, os.WriteFile("app.yaml", []byte("name: app\n"), 0o600))
 	require.NoError(t, os.WriteFile("config.json", []byte(`{}`), 0o600))
 
-	source, err := findConfigSource("app", "", false)
+	source, err := findConfigSource("app", "", cwdOptions)
 	require.NoError(t, err)
 
 	if yamlSupported {
@@ -143,7 +148,7 @@ func TestFindConfigSource_YAMLBuildTag(t *testing.T) {
 	} else {
 		assert.Equal(t, &JSONSource{Path: "config.json"}, source)
 
-		_, err = findConfigSource("app", "app.yaml", false)
+		_, err = findConfigSource("app", "app.yaml", cwdOptions)
 		require.ErrorContains(t, err, "with_yaml")
 	}
 }

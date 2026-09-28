@@ -120,12 +120,12 @@ func TestLoad(t *testing.T) {
 	t.Setenv("APP_PORT", "9090")
 
 	target := &MockConfig{}
-	err = config.AutoLoad(target, "test-app", "APP")
+	err = config.AutoLoad(target, "test-app", "APP", config.WithWorkingDir())
 	require.NoError(t, err)
 	assert.EqualExportedValues(t, &MockConfig{Name: "test-app", Port: 9090}, target)
 
 	// A second call must not panic on redefined flags.
-	require.NoError(t, config.AutoLoad(&MockConfig{}, "test-app", "APP"))
+	require.NoError(t, config.AutoLoad(&MockConfig{}, "test-app", "APP", config.WithWorkingDir()))
 	require.NotNil(t, flag.Lookup("config"))
 	require.NotNil(t, flag.Lookup("generate-template"))
 }
@@ -326,10 +326,16 @@ func TestAutoLoad_AllowUnknownFields(t *testing.T) {
 		os.WriteFile("config.json", []byte(`{"name": "app", "port": 8080, "extra": 1}`), 0o600),
 	)
 
-	require.ErrorIs(t, config.AutoLoad(&MockConfig{}, "test-app", "APP"), config.ErrInvalidConfig)
+	require.ErrorIs(
+		t,
+		config.AutoLoad(&MockConfig{}, "test-app", "APP", config.WithWorkingDir()),
+		config.ErrInvalidConfig,
+	)
 
 	target := &MockConfig{}
-	require.NoError(t, config.AutoLoad(target, "test-app", "APP", config.WithAllowUnknownFields()))
+	require.NoError(t, config.AutoLoad(
+		target, "test-app", "APP", config.WithWorkingDir(), config.WithAllowUnknownFields(),
+	))
 	assert.Equal(t, "app", target.Name)
 }
 
@@ -343,4 +349,21 @@ func TestMustValidate(t *testing.T) {
 		"config: validation failed: *config_test.MockConfig: "+errInvalidPort.Error(),
 		func() { config.MustValidate(&MockConfig{}) },
 	)
+}
+
+func TestAutoLoad_WorkingDirIsOptIn(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	require.NoError(
+		t,
+		os.WriteFile("config.json", []byte(`{"name": "cwd-app", "port": 8080}`), 0o600),
+	)
+
+	target := &MockConfig{}
+	require.NoError(t, config.AutoLoad(target, "test-app", "APP"))
+	assert.Equal(t, "default-app", target.Name)
+
+	target = &MockConfig{}
+	require.NoError(t, config.AutoLoad(target, "test-app", "APP", config.WithWorkingDir()))
+	assert.Equal(t, "cwd-app", target.Name)
 }
