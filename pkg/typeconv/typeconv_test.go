@@ -217,6 +217,13 @@ func TestConverter_Convert_Map(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "unbalanced quote",
+			value:   `a="b c`,
+			kvSep:   "=",
+			target:  &map[string]string{},
+			wantErr: true,
+		},
+		{
 			name:    "invalid value type",
 			value:   `a=1 b=notanint`,
 			kvSep:   "=",

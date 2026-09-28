@@ -242,7 +242,11 @@ func (c *Converter) timeLayout() string {
 // Double-quoted segments are respected, so spaces inside quotes are preserved.
 // Returns a slice of [2]string{key, value} entries.
 func parseMapEntries(input, kvSep string) ([][2]string, error) {
-	tokens := splitUnquoted(input)
+	tokens, err := splitUnquoted(input)
+	if err != nil {
+		return nil, err
+	}
+
 	entries := make([][2]string, 0, len(tokens))
 
 	for index, token := range tokens {
@@ -360,8 +364,9 @@ func setTime(field reflect.Value, value, layout string) error {
 
 // splitUnquoted splits a string on unquoted whitespace (any unicode.IsSpace rune: spaces, tabs,
 // newlines). Characters inside double quotes are treated as part of the current token. There is no
-// escape for a literal double quote, so a value cannot contain one.
-func splitUnquoted(value string) []string {
+// escape for a literal double quote, so a value cannot contain one. A quote that is still open at
+// the end is an error, since it would otherwise swallow the rest of the input into one token.
+func splitUnquoted(value string) ([]string, error) {
 	var (
 		tokens []string
 		token  strings.Builder
@@ -384,11 +389,15 @@ func splitUnquoted(value string) []string {
 		}
 	}
 
+	if inQuot {
+		return nil, fmt.Errorf("%w: unbalanced double quote", ErrInvalidValue)
+	}
+
 	if token.Len() > 0 {
 		tokens = append(tokens, token.String())
 	}
 
-	return tokens
+	return tokens, nil
 }
 
 // unquote removes surrounding double quotes from a string if present.
