@@ -153,10 +153,7 @@ func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
 
 	execCmd := r.createExecCommand(cmdCtx, cmd, result.WorkDir)
 
-	err = applyProcessAttributes(r, execCmd)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrProcessStart, err)
-	}
+	applyProcessAttributes(r, execCmd)
 
 	err = execCmd.Start()
 	if err != nil {

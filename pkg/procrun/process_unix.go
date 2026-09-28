@@ -44,8 +44,10 @@ func applyArguments(runner *Runner) error {
 	return nil
 }
 
-// applyProcessAttributes applies the required process attributes to the given command.
-func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
+// applyProcessAttributes applies the required process attributes to the given command. It cannot
+// fail, so Run has no error path between creating the work dir and starting the process that would
+// leave the directory behind.
+func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) {
 	cmd.SysProcAttr = &unix.SysProcAttr{
 		// Create a new process group for isolation.
 		Setpgid: true,
@@ -58,8 +60,6 @@ func applyProcessAttributes(runner *Runner, cmd *exec.Cmd) error {
 	}
 
 	runner.Log.Debug("procrun: applying process attributes")
-
-	return nil
 }
 
 // checkCapabilities checks and logs if the required binaries are available.

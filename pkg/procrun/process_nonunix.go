@@ -28,10 +28,9 @@ func applyArguments(runner *Runner) error {
 	return nil
 }
 
-// applyProcessAttributes applies the required process attributes to the given command.
-func applyProcessAttributes(_ *Runner, _ *exec.Cmd) error {
-	return nil
-}
+// applyProcessAttributes applies the required process attributes to the given command. There are
+// none outside Unix.
+func applyProcessAttributes(_ *Runner, _ *exec.Cmd) {}
 
 // checkCapabilities checks and logs if the required binaries are available.
 func checkCapabilities(r *Runner) {
