@@ -189,8 +189,10 @@ func (s *Shutdown) Track(service any) error {
 	return nil
 }
 
-// Wait blocks until all tracked goroutines have finished.
-// Use this function at the end of the main function.
+// Wait blocks until a shutdown has started and then either all tracked goroutines and services have
+// finished or Config.Timeout has passed. After a timeout without Config.Force, it returns while
+// stuck services may still be running, so main can finish instead of hanging on them. Use this
+// function at the end of the main function.
 func (s *Shutdown) Wait() {
 	<-s.runtimeCtx.Done()
 	<-s.shutdownCtx.Done()
