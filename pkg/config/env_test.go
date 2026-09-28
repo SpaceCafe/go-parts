@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spacecafe/go-parts/pkg/config"
 	"github.com/stretchr/testify/assert"
@@ -275,4 +276,37 @@ func TestEnvSource_GenerateTemplate(t *testing.T) {
 	assert.Equal(t, "TPL_TLS_CERT_FILE=\nTPL_NAME=\n", output.String())
 	assert.Nil(t, target.TLS)
 	assert.Empty(t, target.Name)
+}
+
+// upperText is a struct leaf: it implements encoding.TextUnmarshaler, so it loads from one variable.
+type upperText struct{ value string }
+
+func (u *upperText) UnmarshalText(text []byte) error {
+	u.value = strings.ToUpper(string(text))
+
+	return nil
+}
+
+func TestEnvSource_Load_StructLeaves(t *testing.T) {
+	t.Setenv("LEAF_WHEN", "2026-09-28T10:00:00Z")
+	t.Setenv("LEAF_SINCE", "2026-01-01T00:00:00Z")
+	t.Setenv("LEAF_TEXT", "shout")
+
+	var target struct {
+		When  time.Time
+		Since *time.Time
+		Text  upperText
+	}
+
+	require.NoError(t, config.EnvSource{Prefix: "LEAF"}.Load(&target))
+
+	assert.Equal(t, time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC), target.When)
+	require.NotNil(t, target.Since)
+	assert.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), *target.Since)
+	assert.Equal(t, "SHOUT", target.Text.value)
+
+	var output strings.Builder
+
+	require.NoError(t, config.EnvSource{Prefix: "LEAF"}.GenerateTemplate(&target, &output))
+	assert.Equal(t, "LEAF_WHEN=\nLEAF_SINCE=\nLEAF_TEXT=\n", output.String())
 }

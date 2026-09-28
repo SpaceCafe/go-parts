@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/spacecafe/go-parts/pkg/typeconv"
@@ -133,12 +135,7 @@ func collectEnvNames(
 
 		envName := createEnvName(prefix, fieldType.Name, envTag)
 
-		nested := fieldType.Type
-		if nested.Kind() == reflect.Pointer && nested.Elem().Kind() == reflect.Struct {
-			nested = nested.Elem()
-		}
-
-		if nested.Kind() == reflect.Struct {
+		if nested, ok := nestedStruct(fieldType.Type); ok {
 			if visiting[nested] {
 				continue
 			}
@@ -160,6 +157,24 @@ func collectEnvNames(
 	}
 
 	return nil
+}
+
+// nestedStruct returns the struct type that a field of type typeOf groups other fields in,
+// following one pointer, or false when typeOf is a leaf that loads from a single variable.
+// time.Time and structs whose pointer implements encoding.TextUnmarshaler hold one value, as
+// typeconv converts them.
+func nestedStruct(typeOf reflect.Type) (reflect.Type, bool) {
+	if typeOf.Kind() == reflect.Pointer {
+		typeOf = typeOf.Elem()
+	}
+
+	if typeOf.Kind() != reflect.Struct ||
+		typeOf == reflect.TypeFor[time.Time]() ||
+		reflect.PointerTo(typeOf).Implements(reflect.TypeFor[encoding.TextUnmarshaler]()) {
+		return nil, false
+	}
+
+	return typeOf, true
 }
 
 // checkEnvNameCollisions rejects names that occur twice, and a name N next to N_FILE: lookupEnv reads
@@ -219,8 +234,10 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 		// Build the environment variable name
 		envName := createEnvName(prefix, fieldType.Name, envTag)
 
+		_, nested := nestedStruct(field.Type())
+
 		// Handle nested structs recursively
-		if field.Kind() == reflect.Struct {
+		if nested && field.Kind() == reflect.Struct {
 			err := s.loadStruct(field, envName)
 			if err != nil {
 				return err
@@ -231,7 +248,7 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 
 		// Handle pointers to structs
 		//nolint:nestif // Required for optional nested struct initialization and loading.
-		if field.Kind() == reflect.Pointer && field.Type().Elem().Kind() == reflect.Struct {
+		if nested && field.Kind() == reflect.Pointer {
 			// Initialize nil pointer if environment variable exists
 			if s.hasEnvWithPrefix(envName) {
 				if field.IsNil() {
