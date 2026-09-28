@@ -99,14 +99,39 @@ func (r *ResponseWriter) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
-// Abort terminates the request through ResponseWriter.Abort. When resp is not a ResponseWriter (no
-// Router wraps the request), it uses a zero-value ResponseWriter, so the error is still logged and
-// server error details (5xx) are still withheld from the client.
+// Abort terminates the request through ResponseWriter.Abort. When middleware has wrapped the
+// Router's ResponseWriter, Abort follows the Unwrap chain to borrow its logger and error renderer,
+// but still writes through resp, so the wrapping middleware sees the response. Without a
+// ResponseWriter in the chain (no Router wraps the request), the logger and renderer fall back to
+// their defaults, so the error is still logged and server error details (5xx) are still withheld
+// from the client.
 func Abort(resp http.ResponseWriter, req *http.Request, code int, err error) {
-	writer, ok := resp.(*ResponseWriter)
-	if !ok {
-		writer = &ResponseWriter{ResponseWriter: resp}
+	if writer, ok := resp.(*ResponseWriter); ok {
+		writer.Abort(req, code, err)
+
+		return
+	}
+
+	writer := &ResponseWriter{ResponseWriter: resp}
+	if inner := findResponseWriter(resp); inner != nil {
+		writer.Log = inner.Log
+		writer.Error = inner.Error
 	}
 
 	writer.Abort(req, code, err)
+}
+
+// findResponseWriter follows the Unwrap chain of resp, the convention http.ResponseController also
+// relies on, and returns the first ResponseWriter it finds, or nil.
+func findResponseWriter(resp http.ResponseWriter) *ResponseWriter {
+	for {
+		switch writer := resp.(type) {
+		case *ResponseWriter:
+			return writer
+		case interface{ Unwrap() http.ResponseWriter }:
+			resp = writer.Unwrap()
+		default:
+			return nil
+		}
+	}
 }

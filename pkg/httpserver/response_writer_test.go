@@ -216,3 +216,42 @@ func TestAbort_PlainResponseWriter(t *testing.T) {
 		})
 	}
 }
+
+// statusRecorder is a middleware-style wrapper that records the status written through it.
+type statusRecorder struct {
+	http.ResponseWriter
+
+	status int
+}
+
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func TestAbort_WrappedResponseWriter(t *testing.T) {
+	t.Parallel()
+
+	logger := &recordingLogger{}
+	rec := httptest.NewRecorder()
+	outer := &statusRecorder{ResponseWriter: &httpserver.ResponseWriter{
+		ResponseWriter: rec,
+		Log:            logger,
+		Error:          httpserver.RenderErrorAsProblem,
+	}}
+
+	httpserver.Abort(
+		outer,
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+		http.StatusBadRequest,
+		errCause,
+	)
+
+	assert.Equal(t, errCause, logger.loggedErr)
+	assert.Equal(t, http.StatusBadRequest, outer.status)
+	assert.Equal(t, "application/problem+json; charset=utf-8", rec.Header().Get("Content-Type"))
+}
