@@ -367,3 +367,18 @@ func TestAutoLoad_WorkingDirIsOptIn(t *testing.T) {
 	require.NoError(t, config.AutoLoad(target, "test-app", "APP", config.WithWorkingDir()))
 	assert.Equal(t, "cwd-app", target.Name)
 }
+
+//nolint:paralleltest // Replaces os.Args.
+func TestAutoLoad_GenerateTemplate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "template.json")
+
+	args := os.Args
+
+	t.Cleanup(func() { os.Args = args })
+
+	os.Args = []string{"app", "-generate-template=" + path}
+
+	target := &MockConfig{}
+	require.ErrorIs(t, config.AutoLoad(target, "test-app", "APP"), config.ErrTemplateGenerated)
+	assert.FileExists(t, path)
+}

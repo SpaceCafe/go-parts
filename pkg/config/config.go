@@ -21,6 +21,10 @@ var (
 	ErrInvalidConfig  = errors.New("config: invalid config")
 	ErrValidation     = errors.New("config: validation failed")
 	ErrTemplateCreate = errors.New("config: cannot create template file")
+
+	// ErrTemplateGenerated reports that AutoLoad wrote a template for -generate-template instead of
+	// loading the config. It is not a failure: main should exit with status 0 without starting.
+	ErrTemplateGenerated = errors.New("config: template generated")
 )
 
 // Defaultable allows a configuration struct to set its own default values.
@@ -61,7 +65,8 @@ type pointerDefaultable[T any] interface {
 // envPrefix, then validates it. It reads its options from os.Args without parsing flag.CommandLine:
 //
 //   - -config <path> names the config file; it must exist.
-//   - -generate-template[=<path>] writes a template (default config.tmpl.json) and exits.
+//   - -generate-template[=<path>] writes a template (default config.tmpl.json) and returns
+//     ErrTemplateGenerated, so main can exit with status 0 and its deferred functions still run.
 //
 // Without -config, AutoLoad uses the first file it finds in the user config directory, then in the
 // system config directory (/etc on Unix). The working directory is searched first only with
@@ -92,7 +97,7 @@ func AutoLoad(target Validatable, name, envPrefix string, opts ...Option) error 
 			return err
 		}
 
-		os.Exit(0)
+		return ErrTemplateGenerated
 	}
 
 	sources := []Source{}
