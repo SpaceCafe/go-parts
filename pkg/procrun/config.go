@@ -30,6 +30,10 @@ var ErrPathListSeparator = errors.New(
 
 var ErrStrictWithoutLandlock = errors.New("procrun: strict mode requires a landlock bin")
 
+// ErrStrictUnsupported is returned by Validate when Restrictions.Strict is set on a platform without
+// Landlock, so the config fails when it is loaded instead of when the first process runs.
+var ErrStrictUnsupported = errors.New("procrun: strict mode is only supported on Linux")
+
 // Limits defines resource constraints to apply to a process.
 // All fields map to POSIX resource limits set via prlimit(2) on the spawned process.
 type Limits struct {
@@ -138,9 +142,16 @@ type Config struct {
 	AutoCleanup bool `json:"autoCleanup" yaml:"autoCleanup"`
 }
 
+// SetDefaults applies the defaults. The helper binaries only exist on Linux; elsewhere they stay
+// unset, so a default config validates and processes run without restrictions.
 func (c *Config) SetDefaults() {
-	c.LandlockBin = DefaultLandlockBin
-	c.PrlimitBin = DefaultPrlimitBin
+	c.LandlockBin = ""
+	c.PrlimitBin = ""
+
+	if sandboxSupported {
+		c.LandlockBin = DefaultLandlockBin
+		c.PrlimitBin = DefaultPrlimitBin
+	}
 
 	c.Restrictions.BindTCP = []int{}
 	c.Restrictions.ConnectTCP = []int{}
@@ -163,6 +174,10 @@ func (c *Config) Validate() error {
 		validate.Validate("landlock bin", c.LandlockBin, lookPath(&c.LandlockBin)),
 		validate.Validate("prlimit bin", c.PrlimitBin, lookPath(&c.PrlimitBin)),
 		validate.Validate("strict", c.Restrictions.Strict, func(strict bool) error {
+			if strict && !sandboxSupported {
+				return ErrStrictUnsupported
+			}
+
 			if strict && c.LandlockBin == "" {
 				return ErrStrictWithoutLandlock
 			}

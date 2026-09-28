@@ -7,5 +7,6 @@
 //
 // Without a Command.Dir, each run gets a temporary working directory that AutoCleanup removes; a
 // directory supplied by the caller is never removed. The sandbox is only available on Linux; on
-// other platforms commands run without restrictions, and Restrictions.Strict makes them fail.
+// other platforms, macOS and the BSDs included, commands run without restrictions, and a config
+// with Restrictions.Strict fails validation.
 package procrun

@@ -60,10 +60,6 @@ type Runner struct {
 	// Log is the logger instance.
 	Log log.Logger
 
-	// setupErr is the error from applying the sandbox arguments. Run refuses to start processes
-	// while it is set, so a sandbox that cannot be set up never degrades silently.
-	setupErr error
-
 	// cfg holds configuration settings.
 	cfg *Config
 }
@@ -85,11 +81,6 @@ func New(cfg *Config, opts ...Option) *Runner {
 
 	for _, opt := range opts {
 		opt(obj)
-	}
-
-	obj.setupErr = applyArguments(obj)
-	if obj.setupErr != nil {
-		obj.Log.Error("procrun: failed to apply arguments", "error", obj.setupErr)
 	}
 
 	checkCapabilities(obj)
@@ -123,10 +114,6 @@ func (r *Runner) Run(ctx context.Context, cmd *Command) (*Result, error) {
 
 	if cmd.Path == "" {
 		return nil, ErrInvalidCommandPath
-	}
-
-	if r.setupErr != nil {
-		return nil, fmt.Errorf("%w: %w", ErrProcessStart, r.setupErr)
 	}
 
 	result, err := r.setupWorkDir(cmd)

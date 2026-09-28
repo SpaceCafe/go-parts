@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -326,7 +327,32 @@ func TestConfig_Validate_StrictRequiresLandlock(t *testing.T) {
 	cfg.PrlimitBin = ""
 	cfg.Restrictions.Strict = true
 
-	require.ErrorIs(t, cfg.Validate(), procrun.ErrStrictWithoutLandlock)
+	// Off Linux, strict mode is rejected before the missing binary matters.
+	wantErr := procrun.ErrStrictWithoutLandlock
+	if runtime.GOOS != "linux" {
+		wantErr = procrun.ErrStrictUnsupported
+	}
+
+	require.ErrorIs(t, cfg.Validate(), wantErr)
+}
+
+func TestConfig_SetDefaults_HelperBinaries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &procrun.Config{}
+	cfg.SetDefaults()
+
+	if runtime.GOOS == "linux" {
+		assert.Equal(t, procrun.DefaultLandlockBin, cfg.LandlockBin)
+		assert.Equal(t, procrun.DefaultPrlimitBin, cfg.PrlimitBin)
+
+		return
+	}
+
+	// Elsewhere the helpers do not exist, so a default config must validate without them.
+	assert.Empty(t, cfg.LandlockBin)
+	assert.Empty(t, cfg.PrlimitBin)
+	require.NoError(t, cfg.Validate())
 }
 
 // recordingLogger keeps every Debug line as text.
