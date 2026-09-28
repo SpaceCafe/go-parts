@@ -223,13 +223,20 @@ func (f *File) verifyMagic(magicBytes []byte) error {
 }
 
 // write creates filePath and writes a prefix followed by the remaining body.
-func (f *File) write() error {
+func (f *File) write() (err error) {
 	file, err := os.Create(f.Path) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrTempFileCreation, err)
 	}
 
-	defer func() { _ = file.Close() }()
+	// A failed Close can mean the data never reached the disk (for example on NFS or a full disk),
+	// so it fails the write like any other error.
+	defer func() {
+		closeErr := file.Close()
+		if closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("%w: %w", ErrWriteFile, closeErr))
+		}
+	}()
 
 	// Recombine the already-read magic bytes with the rest of the body.
 	_, err = io.Copy(file, io.MultiReader(bytes.NewReader(f.magicBytes), f.reader))
