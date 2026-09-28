@@ -392,3 +392,56 @@ func TestInvalidConfigsPanic(t *testing.T) {
 		})
 	}
 }
+
+func TestBasicAuthConfig_Validate_PasswordSchemes(t *testing.T) {
+	t.Parallel()
+
+	// The same password as bcryptSecretPass, hashed with cost 5 instead of 4.
+	const bcryptCost5 = "$2a$05$I7tJsCFci7vNyp5sHPmPxuULrU0uKiIHSL5liL.UZ8v.kUGHD/iHm"
+
+	tests := map[string]struct {
+		principals map[string]validate.Secret
+		wantErr    error
+	}{
+		"plaintext only": {
+			principals: map[string]validate.Secret{"alice": "alicepass", "bob": "bobs-pass"},
+		},
+		"bcrypt with one cost": {
+			principals: map[string]validate.Secret{
+				"alice": bcryptSecretPass,
+				"bob":   bcryptSecretPass,
+			},
+		},
+		"bcrypt and plaintext": {
+			principals: map[string]validate.Secret{"alice": bcryptSecretPass, "bob": "bobs-pass"},
+			wantErr:    middleware.ErrMixedPasswordSchemes,
+		},
+		"bcrypt with different costs": {
+			principals: map[string]validate.Secret{
+				"alice": bcryptSecretPass,
+				"bob":   bcryptCost5,
+			},
+			wantErr: middleware.ErrMixedPasswordSchemes,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &middleware.BasicAuthConfig{}
+			cfg.SetDefaults()
+			cfg.Principals = tt.principals
+
+			err := cfg.Validate()
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.NotContains(t, err.Error(), "bobs-pass")
+		})
+	}
+}

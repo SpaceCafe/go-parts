@@ -5,7 +5,11 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spacecafe/go-parts/pkg/config"
@@ -33,7 +37,10 @@ var (
 	ErrBcryptToken      = errors.New(
 		"basic-auth: tokens must not be bcrypt hashes, use plaintext or sha256:<hex>",
 	)
-	ErrInvalidTokenDigest = errors.New("basic-auth: sha256 token must be 64 hex characters")
+	ErrInvalidTokenDigest   = errors.New("basic-auth: sha256 token must be 64 hex characters")
+	ErrMixedPasswordSchemes = errors.New(
+		"basic-auth: principals must all be plaintext or all bcrypt with the same cost",
+	)
 
 	//nolint:gochecknoglobals // Maintain a set of predefined bcrypt prefixes that are used throughout the application.
 	BcryptHashPrefixes = []string{"$2a$", "$2b$", "$2x$", "$2y$"}
@@ -49,7 +56,9 @@ type TokenAuthenticator func(token string) bool
 // BasicAuthConfig holds the configuration for BasicAuth middleware.
 type BasicAuthConfig struct {
 	// Principals defines a mapping of usernames to their respective passwords for basic
-	// authentication. Passwords are secrets, so validation errors never echo them.
+	// authentication. Passwords are secrets, so validation errors never echo them. All passwords
+	// must be plaintext, or all bcrypt hashes with the same cost, so response times cannot reveal
+	// which usernames exist.
 	Principals map[string]validate.Secret `json:"principals" yaml:"principals"`
 
 	// Authenticator validates the username and password of HTTP Basic credentials.
@@ -91,6 +100,7 @@ func (c *BasicAuthConfig) Validate() error {
 			c.Principals,
 			validate.NotNilMap,
 			validate.Entries[string](validate.LengthMin[validate.Secret](minSecretLength)),
+			validatePasswordSchemes,
 		),
 		validate.Validate(
 			"tokens",
@@ -239,6 +249,39 @@ func validateTokenFormat(token validate.Secret) error {
 	_, err := tokenDigest(string(token))
 
 	return err
+}
+
+// validatePasswordSchemes rejects principals that mix plaintext and bcrypt passwords or bcrypt
+// costs. An unknown username is checked against a bcrypt dummy whenever any principal uses bcrypt
+// (see dummyPassword), so a known user with a cheaper scheme answers measurably faster and reveals
+// that the username exists.
+func validatePasswordSchemes(principals map[string]validate.Secret) error {
+	schemes := make(map[string]struct{}, 1)
+
+	for _, password := range principals {
+		scheme := "plaintext"
+
+		if isBcryptHash(string(password)) {
+			cost, err := bcrypt.Cost([]byte(password))
+			if err != nil {
+				return fmt.Errorf("invalid bcrypt hash: %w", err)
+			}
+
+			scheme = "bcrypt cost " + strconv.Itoa(cost)
+		}
+
+		schemes[scheme] = struct{}{}
+	}
+
+	if len(schemes) > 1 {
+		return fmt.Errorf(
+			"%w: found %s",
+			ErrMixedPasswordSchemes,
+			strings.Join(slices.Sorted(maps.Keys(schemes)), ", "),
+		)
+	}
+
+	return nil
 }
 
 // isBcryptHash reports whether value starts with one of the BcryptHashPrefixes.
