@@ -140,3 +140,37 @@ func TestSecret_String(t *testing.T) {
 	require.Equal(t, "<redacted>", value.String())
 	require.Equal(t, "hunter2", string(value))
 }
+
+// errInvalid is the cause attached to ValidationError in the redaction tests.
+var errInvalid = errors.New("invalid")
+
+// apiKey implements Redacted but, unlike Secret, has no String method, so fmt prints its content.
+type apiKey string
+
+func (apiKey) Redacted() {}
+
+func TestValidationError_Error_RedactsBehindInterfaces(t *testing.T) {
+	t.Parallel()
+
+	type holder struct{ Value any }
+
+	secret := apiKey("hunter2-key")
+	selfRef := map[string]any{"key": secret}
+	selfRef["self"] = selfRef
+
+	for name, value := range map[string]any{
+		"map of any":             map[string]any{"key": secret},
+		"slice of any":           []any{"visible", secret},
+		"struct field of any":    holder{Value: secret},
+		"pointer behind any":     map[string]any{"key": &secret},
+		"nested any":             []any{map[string]any{"inner": []any{secret}}},
+		"self-referencing value": selfRef,
+	} {
+		err := &validate.ValidationError{Name: "config", Value: value, Err: errInvalid}
+		require.NotContains(t, err.Error(), "hunter2", name)
+		require.Contains(t, err.Error(), "<redacted>", name)
+	}
+
+	err := &validate.ValidationError{Name: "config", Value: []any{"visible"}, Err: errInvalid}
+	require.Contains(t, err.Error(), "visible", "values without secrets stay visible")
+}

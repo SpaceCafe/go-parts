@@ -58,13 +58,15 @@ func (r *ValidationError) Unwrap() error {
 
 // formatValue renders a rejected value for an error message, honoring Redacted and the cap. A
 // container (map, slice, array, pointer or struct) that can hold a Redacted value is redacted as a
-// whole, so a map of passwords does not print its entries.
+// whole, so a map of passwords does not print its entries. This covers both the static type and,
+// behind interface types such as map[string]any, the values it holds at run time.
 func formatValue(value any) string {
 	if _, ok := value.(Redacted); ok {
 		return redactedPlaceholder
 	}
 
-	if value != nil && holdsRedacted(reflect.TypeOf(value), make(map[reflect.Type]bool)) {
+	if value != nil && (holdsRedacted(reflect.TypeOf(value), make(map[reflect.Type]bool)) ||
+		holdsRedactedValue(reflect.ValueOf(value), make(map[uintptr]bool))) {
 		return redactedPlaceholder
 	}
 
@@ -104,6 +106,58 @@ func holdsRedacted(typ reflect.Type, seen map[reflect.Type]bool) bool {
 	case reflect.Struct:
 		for field := range typ.Fields() {
 			if holdsRedacted(field.Type, seen) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// holdsRedactedValue reports whether value contains a Redacted value at run time. holdsRedacted
+// only sees static types, so it misses a Redacted value stored in an interface, such as an entry of
+// a map[string]any. seen holds the addresses of visited pointers, maps and slices, so a
+// self-referencing value is walked only once.
+func holdsRedactedValue(value reflect.Value, seen map[uintptr]bool) bool {
+	if !value.IsValid() {
+		return false
+	}
+
+	if value.Type().Implements(redactedType) {
+		return true
+	}
+
+	//nolint:exhaustive // Only these kinds can contain other values; every other kind is a leaf.
+	switch value.Kind() {
+	case reflect.Interface:
+		return !value.IsNil() && holdsRedactedValue(value.Elem(), seen)
+	case reflect.Pointer, reflect.Map, reflect.Slice:
+		if value.IsNil() || seen[value.Pointer()] {
+			return false
+		}
+
+		seen[value.Pointer()] = true
+	}
+
+	//nolint:exhaustive // See above.
+	switch value.Kind() {
+	case reflect.Pointer:
+		return holdsRedactedValue(value.Elem(), seen)
+	case reflect.Slice, reflect.Array:
+		for i := range value.Len() {
+			if holdsRedactedValue(value.Index(i), seen) {
+				return true
+			}
+		}
+	case reflect.Map:
+		for iter := value.MapRange(); iter.Next(); {
+			if holdsRedactedValue(iter.Key(), seen) || holdsRedactedValue(iter.Value(), seen) {
+				return true
+			}
+		}
+	case reflect.Struct:
+		for _, field := range value.Fields() {
+			if holdsRedactedValue(field, seen) {
 				return true
 			}
 		}
