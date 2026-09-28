@@ -21,7 +21,7 @@ func TestLength(t *testing.T) {
 		{name: "too long", value: "abcd", target: 3, wantErr: validate.ErrLength},
 		{name: "multi byte runes", value: "café", target: 5},
 		{
-			name:    "multi byte runes counted as runes",
+			name:    "multi byte runes counted as bytes",
 			value:   "café",
 			target:  4,
 			wantErr: validate.ErrLength,
@@ -360,6 +360,55 @@ func TestSliceLengthMin(t *testing.T) {
 			t.Parallel()
 
 			requireErr(t, tt.wantErr, validate.SliceLengthMin[int](tt.lowerBound)(tt.value))
+		})
+	}
+}
+
+func TestRuneLength(t *testing.T) {
+	t.Parallel()
+
+	// "äöü" is 3 characters but 6 bytes.
+	tests := []struct {
+		wantErr   error
+		validator func(string) error
+		name      string
+		value     string
+	}{
+		{name: "exact", validator: validate.RuneLength[string](3), value: "äöü"},
+		{
+			name:      "exact too long",
+			validator: validate.RuneLength[string](2),
+			value:     "äöü",
+			wantErr:   validate.ErrLength,
+		},
+		{name: "min", validator: validate.RuneLengthMin[string](3), value: "äöü"},
+		{
+			name:      "min too short",
+			validator: validate.RuneLengthMin[string](6),
+			value:     "äöü",
+			wantErr:   validate.ErrLengthMin,
+		},
+		{name: "max", validator: validate.RuneLengthMax[string](3), value: "äöü"},
+		{
+			name:      "max too long",
+			validator: validate.RuneLengthMax[string](2),
+			value:     "äöü",
+			wantErr:   validate.ErrLengthMax,
+		},
+		{name: "between", validator: validate.RuneLengthBetween[string](1, 3), value: "äöü"},
+		{
+			name:      "between too long",
+			validator: validate.RuneLengthBetween[string](1, 2),
+			value:     "äöü",
+			wantErr:   validate.ErrLengthBetween,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			requireErr(t, tt.wantErr, tt.validator(tt.value))
 		})
 	}
 }

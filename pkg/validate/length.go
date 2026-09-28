@@ -3,6 +3,7 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"unicode/utf8"
 )
 
 var (
@@ -12,24 +13,59 @@ var (
 	ErrLengthMin     = errors.New("validate: value's length must be greater or equal than")
 )
 
-// Length validates that the provided string has the specified length.
+// Length validates that the provided string has the specified length in bytes. Use RuneLength to
+// count characters.
 func Length[T ~string](targetLength int) func(T) error {
 	return length[any, T, T](targetLength)
 }
 
-// LengthBetween validates that the provided string has a length between the specified bounds.
+// LengthBetween validates that the provided string has a length in bytes between the specified
+// bounds. Use RuneLengthBetween to count characters.
 func LengthBetween[T ~string](lowerBound, upperBound int) func(T) error {
 	return lengthBetween[any, T, T](lowerBound, upperBound)
 }
 
-// LengthMin validates that the provided string has a length greater or equal than the specified bound.
+// LengthMin validates that the provided string has a length in bytes greater or equal than the
+// specified bound. Use RuneLengthMin to count characters, for example for a password.
 func LengthMin[T ~string](lowerBound int) func(T) error {
 	return lengthMin[any, T, T](lowerBound)
 }
 
-// LengthMax validates that the provided string has a length less or equal than the specified bound.
+// LengthMax validates that the provided string has a length in bytes less or equal than the
+// specified bound, for example to fit a storage limit. Use RuneLengthMax to count characters.
 func LengthMax[T ~string](upperBound int) func(T) error {
 	return lengthMax[any, T, T](upperBound)
+}
+
+// RuneLength validates that the provided string has the specified number of characters (runes).
+func RuneLength[T ~string](targetLength int) func(T) error {
+	return func(value T) error {
+		return checkLength(utf8.RuneCountInString(string(value)), targetLength)
+	}
+}
+
+// RuneLengthBetween validates that the provided string has a number of characters (runes) between
+// the specified bounds (inclusive).
+func RuneLengthBetween[T ~string](lowerBound, upperBound int) func(T) error {
+	return func(value T) error {
+		return checkLengthBetween(utf8.RuneCountInString(string(value)), lowerBound, upperBound)
+	}
+}
+
+// RuneLengthMin validates that the provided string has at least the specified number of characters
+// (runes).
+func RuneLengthMin[T ~string](lowerBound int) func(T) error {
+	return func(value T) error {
+		return checkLengthMin(utf8.RuneCountInString(string(value)), lowerBound)
+	}
+}
+
+// RuneLengthMax validates that the provided string has at most the specified number of characters
+// (runes).
+func RuneLengthMax[T ~string](upperBound int) func(T) error {
+	return func(value T) error {
+		return checkLengthMax(utf8.RuneCountInString(string(value)), upperBound)
+	}
 }
 
 // MapLength validates that the provided map has the specified length.
@@ -75,11 +111,7 @@ func SliceLengthMax[V any](upperBound int) func([]V) error {
 // length validates that the provided value has the specified length.
 func length[K comparable, V any, T ~string | ~[]V | ~map[K]V](targetLength int) func(T) error {
 	return func(value T) error {
-		if len(value) != targetLength {
-			return fmt.Errorf("%w %v", ErrLength, targetLength)
-		}
-
-		return nil
+		return checkLength(len(value), targetLength)
 	}
 }
 
@@ -88,32 +120,54 @@ func lengthBetween[K comparable, V any, T ~string | ~[]V | ~map[K]V](
 	lowerBound, upperBound int,
 ) func(T) error {
 	return func(value T) error {
-		if len(value) < lowerBound || len(value) > upperBound {
-			return fmt.Errorf("%w %v and %v", ErrLengthBetween, lowerBound, upperBound)
-		}
-
-		return nil
+		return checkLengthBetween(len(value), lowerBound, upperBound)
 	}
 }
 
 // lengthMin validates that the provided value has a length greater or equal than the specified bound.
 func lengthMin[K comparable, V any, T ~string | ~[]V | ~map[K]V](lowerBound int) func(T) error {
 	return func(value T) error {
-		if len(value) < lowerBound {
-			return fmt.Errorf("%w %d", ErrLengthMin, lowerBound)
-		}
-
-		return nil
+		return checkLengthMin(len(value), lowerBound)
 	}
 }
 
 // lengthMax validates that the provided value has a length less or equal than the specified bound.
 func lengthMax[K comparable, V any, T ~string | ~[]V | ~map[K]V](upperBound int) func(T) error {
 	return func(value T) error {
-		if len(value) > upperBound {
-			return fmt.Errorf("%w %d", ErrLengthMax, upperBound)
-		}
-
-		return nil
+		return checkLengthMax(len(value), upperBound)
 	}
+}
+
+// checkLength, checkLengthBetween, checkLengthMin and checkLengthMax compare a length that the
+// caller counted in bytes, characters or elements, so every variant reports the same errors.
+func checkLength(count, targetLength int) error {
+	if count != targetLength {
+		return fmt.Errorf("%w %v", ErrLength, targetLength)
+	}
+
+	return nil
+}
+
+func checkLengthBetween(count, lowerBound, upperBound int) error {
+	if count < lowerBound || count > upperBound {
+		return fmt.Errorf("%w %v and %v", ErrLengthBetween, lowerBound, upperBound)
+	}
+
+	return nil
+}
+
+func checkLengthMin(count, lowerBound int) error {
+	if count < lowerBound {
+		return fmt.Errorf("%w %d", ErrLengthMin, lowerBound)
+	}
+
+	return nil
+}
+
+func checkLengthMax(count, upperBound int) error {
+	if count > upperBound {
+		return fmt.Errorf("%w %d", ErrLengthMax, upperBound)
+	}
+
+	return nil
 }

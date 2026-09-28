@@ -99,7 +99,7 @@ func (c *BasicAuthConfig) Validate() error {
 			"principals",
 			c.Principals,
 			validate.NotNilMap,
-			validate.Entries[string](validate.LengthMin[validate.Secret](minSecretLength)),
+			validate.Entries[string](validate.RuneLengthMin[validate.Secret](minSecretLength)),
 			validatePasswordSchemes,
 		),
 		validate.Validate(
@@ -107,7 +107,7 @@ func (c *BasicAuthConfig) Validate() error {
 			c.Tokens,
 			validate.NotNilSlice,
 			validate.Elements(
-				validate.LengthMin[validate.Secret](minSecretLength),
+				validate.RuneLengthMin[validate.Secret](minSecretLength),
 				validateTokenFormat,
 			),
 		),
