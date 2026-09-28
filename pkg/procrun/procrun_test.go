@@ -398,14 +398,18 @@ func TestNew_NilConfigAppliesDefaults(t *testing.T) {
 	assert.NotPanics(t, func() { procrun.New(nil) })
 }
 
-func TestNew_InvalidConfigFailsRun(t *testing.T) {
+func TestNew_InvalidConfigPanics(t *testing.T) {
 	t.Parallel()
 
 	cfg := &procrun.Config{}
 	cfg.SetDefaults()
 	cfg.Restrictions.BindTCP = []int{99999}
 
-	_, err := procrun.New(cfg).Run(t.Context(), &procrun.Command{Path: "true"})
-	require.ErrorIs(t, err, procrun.ErrProcessStart)
-	assert.ErrorIs(t, err, config.ErrValidation)
+	defer func() {
+		err, ok := recover().(error)
+		require.True(t, ok, "New must panic with an error")
+		assert.ErrorIs(t, err, config.ErrValidation)
+	}()
+
+	procrun.New(cfg)
 }
