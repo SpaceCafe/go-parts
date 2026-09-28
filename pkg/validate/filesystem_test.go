@@ -754,3 +754,24 @@ func requireUnprivileged(t *testing.T) {
 		t.Skip("permission denial is not observable as root")
 	}
 }
+
+func TestStat_PermissionErrorIsNotMissing(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("directory permissions are not enforced")
+	}
+
+	// The child may well exist; an unsearchable parent only means it cannot be checked.
+	path := filepath.Join(mkDir(t, 0o000), "child")
+
+	for name, check := range map[string]func(string) error{
+		"FileExist": validate.FileExist[string],
+		"DirExist":  validate.DirExist[string],
+	} {
+		err := check(path)
+		require.ErrorIs(t, err, validate.ErrPathCheck, name)
+		require.NotErrorIs(t, err, validate.ErrPathNotExist, name)
+		require.ErrorIs(t, err, fs.ErrPermission, name)
+	}
+}

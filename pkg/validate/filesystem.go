@@ -222,7 +222,9 @@ func stat[T ~string](value T) (fs.FileInfo, error) {
 			return nil, ErrPathNotExist
 		}
 
-		return nil, fmt.Errorf("%w: %w", ErrPathNotExist, err)
+		// Any other error (permission denied, I/O failure) says nothing about whether the path
+		// exists, so it is reported as ErrPathCheck, as in PathNotExist.
+		return nil, fmt.Errorf("%w: %w", ErrPathCheck, err)
 	}
 
 	return info, nil
