@@ -7,6 +7,7 @@
 // and renders it with the configured ErrorRenderer (plain text or RFC 7807 problem details);
 // server errors and RedactedError values never reveal their detail to the client.
 //
-// GetJSONBody, GetFileFromBody, GetFormValue, GetPathValue and GetQueryParam read and validate
-// request input. Request bodies are not limited here; see middleware.MaxBodySize.
+// GetJSONBody, GetFileFromBody, GetFormValue, GetPostFormValue, GetPathValue and GetQueryParam
+// read and validate request input; ParseForm parses form bodies and reports errors that the form
+// getters would discard. Request bodies are not limited here; see middleware.MaxBodySize.
 package httpserver

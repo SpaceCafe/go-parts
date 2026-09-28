@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	ErrFormParsing      = errors.New("httpserver: failed to parse form")
 	ErrJSONBodyDecoding = errors.New("httpserver: failed to decode JSON body")
 	ErrNoKey            = errors.New("httpserver: key must not be empty")
 	ErrRequestTooLarge  = errors.New("httpserver: request body too large")
@@ -28,9 +29,34 @@ func wrapBodyError(fallback, err error) error {
 	return fmt.Errorf("%w: %w", fallback, err)
 }
 
-// GetFormValue retrieves and converts a form value from an HTTP request to the specified type. If
-// the form value is missing, the defaultValue is returned. The validators are optional and perform
-// additional validation on the value.
+// ParseForm parses a URL-encoded or multipart request body into req.Form and req.PostForm, keeping
+// up to maxMemory bytes of multipart file parts in memory. Call it before GetFormValue or
+// GetPostFormValue: they read through req.FormValue and req.PostFormValue, which discard parse
+// errors, so a body that is too large or malformed would look like missing values. A body that
+// exceeds middleware.MaxBodySize is reported as ErrRequestTooLarge, any other failure as
+// ErrFormParsing. A body of another content type is left unread.
+func ParseForm(req *http.Request, maxMemory int64) error {
+	// ParseMultipartForm alone is not enough: for a body that is not multipart, it returns
+	// ErrNotMultipart and drops the error of the ParseForm call it makes first.
+	err := req.ParseForm()
+	if err != nil {
+		return wrapBodyError(ErrFormParsing, err)
+	}
+
+	//nolint:gosec // G120: maxMemory bounds memory use; callers bound the body with MaxBodySize.
+	err = req.ParseMultipartForm(maxMemory)
+	if err != nil && !errors.Is(err, http.ErrNotMultipart) {
+		return wrapBodyError(ErrFormParsing, err)
+	}
+
+	return nil
+}
+
+// GetFormValue retrieves and converts a form value from an HTTP request to the specified type. The
+// value is read from the request body or the URL query (see http.Request.FormValue). If the form
+// value is missing, the defaultValue is returned. The validators are optional and perform
+// additional validation on the value, or on defaultValue when the value is missing. Call ParseForm
+// first to detect bodies that are too large or malformed.
 func GetFormValue[T any](
 	req *http.Request,
 	target *T,
@@ -43,6 +69,23 @@ func GetFormValue[T any](
 	}
 
 	return getFormValue[T](target, key, req.FormValue(key), defaultValue, validators...)
+}
+
+// GetPostFormValue works like GetFormValue but reads the value from the request body only, ignoring
+// the URL query. Use it for values that must not end up in URLs, such as secrets or user input,
+// which proxies and access logs record.
+func GetPostFormValue[T any](
+	req *http.Request,
+	target *T,
+	key string,
+	defaultValue T,
+	validators ...func(T) error,
+) error {
+	if key == "" {
+		return ErrNoKey
+	}
+
+	return getFormValue[T](target, key, req.PostFormValue(key), defaultValue, validators...)
 }
 
 // GetJSONBody decodes the JSON-encoded body of an HTTP request into `v`. Unknown fields and data
@@ -143,7 +186,7 @@ func cleanupFiles(value reflect.Value, seen map[uintptr]struct{}) {
 
 // GetPathValue retrieves and converts a path value from an HTTP request to the specified
 // type. If the path value is missing, the defaultValue is returned. The validators are optional
-// and perform additional validation on the value.
+// and perform additional validation on the value, or on defaultValue when the value is missing.
 func GetPathValue[T any](
 	req *http.Request,
 	target *T,
@@ -160,7 +203,7 @@ func GetPathValue[T any](
 
 // GetQueryParam retrieves and converts a query parameter from an HTTP request to the specified
 // type. If the query parameter is missing, the defaultValue is returned. The validators are optional
-// and perform additional validation on the value.
+// and perform additional validation on the value, or on defaultValue when the value is missing.
 func GetQueryParam[T any](
 	req *http.Request,
 	target *T,
@@ -176,7 +219,8 @@ func GetQueryParam[T any](
 }
 
 // getFormValue retrieves and converts a given value to the specified type T, with optional
-// validation. The key names the value in any error returned.
+// validation. An empty formValue counts as missing and yields defaultValue. The key names the value
+// in any error returned.
 func getFormValue[T any](
 	target *T,
 	key string,
@@ -186,8 +230,10 @@ func getFormValue[T any](
 ) error {
 	*target = defaultValue
 
+	// The default passes through the same validators, so a validator such as NotEmpty also rejects
+	// a missing value instead of silently accepting an empty default.
 	if formValue == "" {
-		return nil
+		return validate.Validate(key, defaultValue, validators...)
 	}
 
 	value, err := typeconv.ConvertTo[T](formValue)
