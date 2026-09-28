@@ -139,3 +139,43 @@ func TestShutdown_Go_ConcurrentWithShutdown(t *testing.T) {
 		assert.Equal(t, accepted.Load(), finished.Load())
 	}
 }
+
+// countingLogger counts Info messages by text. Observer goroutines log concurrently, hence mu.
+type countingLogger struct {
+	info map[string]int
+	mu   sync.Mutex
+}
+
+func (l *countingLogger) Debug(string, ...any) {}
+func (l *countingLogger) Error(string, ...any) {}
+
+func (l *countingLogger) Info(msg string, _ ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.info[msg]++
+}
+
+func (l *countingLogger) Warn(string, ...any) {}
+
+func (l *countingLogger) count(msg string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.info[msg]
+}
+
+func TestShutdown_DrainOnce(t *testing.T) {
+	t.Parallel()
+
+	obj := shutdown.New(&shutdown.Config{Timeout: time.Second})
+	logger := &countingLogger{info: map[string]int{}}
+	obj.Log = logger
+
+	for range 3 {
+		obj.Drain()
+	}
+
+	assert.Equal(t, 1, logger.count("shutdown: initializing drain"))
+	require.ErrorIs(t, obj.Context().Err(), context.Canceled)
+}

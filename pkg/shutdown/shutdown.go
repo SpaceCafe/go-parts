@@ -73,6 +73,9 @@ type Shutdown struct {
 	// mu serializes adding to waitGroup with cancelling the runtime context. Once the context is
 	// cancelled under mu, no further Add can happen, so Add never races with Wait.
 	mu sync.Mutex
+
+	// drainOnce makes repeated drains, such as several SIGUSR1 signals, start only one observer.
+	drainOnce sync.Once
 }
 
 // New creates a new Shutdown instance with the provided configuration. A nil cfg applies the
@@ -121,12 +124,15 @@ func (s *Shutdown) Done() <-chan struct{} {
 
 // Drain initiates a graceful drain without termination.
 // Workers are stopped gracefully, but the process stays alive.
-// Use this to stop accepting new connections or long-running tasks.
+// Use this to stop accepting new connections or long-running tasks. Only the first call has an
+// effect.
 func (s *Shutdown) Drain() {
-	s.Log.Info("shutdown: initializing drain")
-	s.cancelRuntime()
+	s.drainOnce.Do(func() {
+		s.Log.Info("shutdown: initializing drain")
+		s.cancelRuntime()
 
-	go s.observeShutdown(nil)
+		go s.observeShutdown(nil)
+	})
 }
 
 // Go calls the given task in a new goroutine and adds that task to the waitGroup.
