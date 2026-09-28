@@ -41,6 +41,17 @@ func TestBasicAuth(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
+			name: "token scheme is case-insensitive",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"Authorization": "tOKEN valid-token",
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
 			name: "invalid token",
 			cfg: func(cfg *middleware.BasicAuthConfig) {
 				cfg.Tokens = []validate.Secret{"valid-token"}

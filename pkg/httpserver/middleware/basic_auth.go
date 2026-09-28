@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	// authTokenPrefix is the Authorization header scheme used for token authentication, kept distinct
-	// from the standard Basic scheme.
-	authTokenPrefix = "Token "
+	// authTokenScheme is the Authorization header scheme used for token authentication, kept distinct
+	// from the standard Basic scheme. RFC 9110 defines schemes as case-insensitive.
+	authTokenScheme = "Token"
 
 	// sha256TokenPrefix marks a configured token stored as the hex SHA-256 digest of the token.
 	sha256TokenPrefix = "sha256:"
@@ -152,10 +152,10 @@ func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 			if cfg.UseTokens && cfg.TokenAuthenticator != nil {
-				authHeader := req.Header.Get("Authorization")
+				scheme, token, found := strings.Cut(req.Header.Get("Authorization"), " ")
 
-				if strings.HasPrefix(authHeader, authTokenPrefix) &&
-					cfg.TokenAuthenticator(authHeader[len(authTokenPrefix):]) {
+				if found && strings.EqualFold(scheme, authTokenScheme) &&
+					cfg.TokenAuthenticator(token) {
 					next.ServeHTTP(resp, req)
 
 					return
