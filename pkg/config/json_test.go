@@ -60,3 +60,25 @@ func testUnknownFields(
 	require.NoError(t, newSource(path, true).Load(&lenient))
 	require.Equal(t, "app", lenient.Name)
 }
+
+func TestJSONSource_Load_TrailingData(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"garbage after the object": `{"name": "app", "port": 8080} garbage`,
+		"second object":            `{"name": "app", "port": 8080} {"port": 9090}`,
+	}
+
+	for name, content := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "config.json")
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+			var target MockConfig
+
+			require.ErrorIs(t, config.JSONSource{Path: path}.Load(&target), config.ErrInvalidConfig)
+		})
+	}
+}

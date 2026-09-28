@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,6 +38,16 @@ func (s JSONSource) Load(target any) error {
 
 	err = decoder.Decode(target)
 	if err != nil {
+		return fmt.Errorf("%w: unmarshal JSON: %w", ErrInvalidConfig, err)
+	}
+
+	// A second value, or anything but whitespace, after the first one is trailing data.
+	_, err = decoder.Token()
+	if !errors.Is(err, io.EOF) {
+		if err == nil {
+			return fmt.Errorf("%w: unexpected data after JSON value", ErrInvalidConfig)
+		}
+
 		return fmt.Errorf("%w: unmarshal JSON: %w", ErrInvalidConfig, err)
 	}
 
