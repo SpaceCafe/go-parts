@@ -20,6 +20,9 @@ var (
 	ErrReservedEnvName = errors.New(
 		"config: field maps to a reserved environment variable, set a prefix or an env tag",
 	)
+	ErrEnvNameCollision = errors.New(
+		"config: fields map to colliding environment variables, set an env tag on one of them",
+	)
 
 	// ReservedEnvNames lists common system variables that an unprefixed field name must not map
 	// onto. It is not exhaustive: it covers names that realistically collide with config fields.
@@ -39,6 +42,10 @@ var (
 // fields map onto unprefixed names, so a field named Home or Path would read HOME or PATH. With an
 // empty prefix, a field name that derives one of the ReservedEnvNames is therefore rejected with
 // ErrReservedEnvName. An explicit env tag is taken as deliberate and is not checked.
+//
+// Every field also reads NAME_FILE (see lookupEnv). Two fields whose names collide, either exactly or
+// because one is the other plus _FILE (Cert and CertFile), are rejected with ErrEnvNameCollision
+// before anything is loaded.
 type EnvSource struct {
 	names  *[]string
 	Prefix string
@@ -70,8 +77,98 @@ func (s EnvSource) Load(target any) error {
 	}
 
 	valueOf := reflect.ValueOf(target).Elem()
+	prefix := strings.ToUpper(s.Prefix)
 
-	return s.loadStruct(valueOf, strings.ToUpper(s.Prefix))
+	var names []string
+
+	err = collectEnvNames(valueOf.Type(), prefix, map[reflect.Type]bool{}, &names)
+	if err != nil {
+		return err
+	}
+
+	err = checkEnvNameCollisions(names)
+	if err != nil {
+		return err
+	}
+
+	return s.loadStruct(valueOf, prefix)
+}
+
+// collectEnvNames appends the env names of all leaf fields of typeOf to names, following the same
+// rules as loadStruct but without reading the environment, so optional pointer-to-struct sections
+// are included. visiting holds the struct types on the current path, so a self-referencing type is
+// not expanded endlessly.
+func collectEnvNames(
+	typeOf reflect.Type,
+	prefix string,
+	visiting map[reflect.Type]bool,
+	names *[]string,
+) error {
+	visiting[typeOf] = true
+	defer delete(visiting, typeOf)
+
+	for fieldType := range typeOf.Fields() {
+		if !fieldType.IsExported() {
+			continue
+		}
+
+		envTag := fieldType.Tag.Get("env")
+		if envTag == "-" {
+			continue
+		}
+
+		envName := createEnvName(prefix, fieldType.Name, envTag)
+
+		nested := fieldType.Type
+		if nested.Kind() == reflect.Pointer && nested.Elem().Kind() == reflect.Struct {
+			nested = nested.Elem()
+		}
+
+		if nested.Kind() == reflect.Struct {
+			if visiting[nested] {
+				continue
+			}
+
+			err := collectEnvNames(nested, envName, visiting, names)
+			if err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		err := checkReservedEnvName(prefix, envTag, fieldType.Name, envName)
+		if err != nil {
+			return err
+		}
+
+		*names = append(*names, envName)
+	}
+
+	return nil
+}
+
+// checkEnvNameCollisions rejects names that occur twice, and a name N next to N_FILE: lookupEnv reads
+// N_FILE as the file holding the value of N, so setting it meant for the second field would also
+// load that file into the first.
+func checkEnvNameCollisions(names []string) error {
+	seen := make(map[string]struct{}, len(names))
+
+	for _, name := range names {
+		if _, dup := seen[name]; dup {
+			return fmt.Errorf("%w: %s", ErrEnvNameCollision, name)
+		}
+
+		seen[name] = struct{}{}
+	}
+
+	for _, name := range names {
+		if _, dup := seen[name+"_FILE"]; dup {
+			return fmt.Errorf("%w: %s and %s_FILE", ErrEnvNameCollision, name, name)
+		}
+	}
+
+	return nil
 }
 
 // hasEnvWithPrefix checks if any environment variable with the given prefix exists.
@@ -136,16 +233,11 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 			continue
 		}
 
-		err := checkReservedEnvName(prefix, envTag, fieldType.Name, envName)
-		if err != nil {
-			return err
-		}
-
 		if s.names != nil {
 			*s.names = append(*s.names, envName)
 		}
 
-		err = loadField(field, envName)
+		err := loadField(field, envName)
 		if err != nil {
 			return err
 		}
@@ -157,6 +249,7 @@ func (s EnvSource) loadStruct(valueOf reflect.Value, prefix string) error {
 // checkReservedEnvName rejects an envName that is one of the ReservedEnvNames when it was derived
 // from the field name without a prefix. Prefixed names cannot collide, and an explicit env tag is
 // taken as deliberate. It is only called for leaf fields; a struct field just contributes a prefix.
+// collectEnvNames calls it for every leaf field, before anything is loaded.
 func checkReservedEnvName(prefix, envTag, fieldName, envName string) error {
 	if prefix != "" || envTag != "" {
 		return nil

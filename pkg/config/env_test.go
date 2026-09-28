@@ -207,3 +207,51 @@ func TestEnvSource_Load_ReservedNames(t *testing.T) {
 		require.NoError(t, config.EnvSource{}.Load(&target))
 	})
 }
+
+func TestEnvSource_Load_FileSuffixCollision(t *testing.T) {
+	t.Parallel()
+
+	type TLS struct{ Cert string }
+
+	tests := map[string]any{
+		"sibling fields": &struct {
+			Cert     string
+			CertFile string
+		}{},
+		"across nesting levels": &struct {
+			TLS         TLS
+			TLSCertFile string
+		}{},
+		"optional nested section": &struct {
+			TLS         *TLS
+			TLSCertFile string
+		}{},
+		"same name twice": &struct {
+			Cert  string
+			Other string `env:"CERT"`
+		}{},
+	}
+
+	for name, target := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			require.ErrorIs(
+				t,
+				config.EnvSource{Prefix: "APP"}.Load(target),
+				config.ErrEnvNameCollision,
+			)
+		})
+	}
+}
+
+func TestEnvSource_Load_SelfReferencingStruct(t *testing.T) {
+	t.Parallel()
+
+	type Node struct {
+		Next *Node
+		Name string
+	}
+
+	require.NoError(t, config.EnvSource{Prefix: "APP"}.Load(&Node{}))
+}
