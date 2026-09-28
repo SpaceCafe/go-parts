@@ -135,3 +135,79 @@ func TestLimitedBuffer_Copy(t *testing.T) {
 		})
 	}
 }
+
+func TestLimitedBuffer_WriteTruncate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		want         string
+		writes       []string
+		limit        int64
+		wantExceeded bool
+	}{
+		{name: "below limit", limit: 10, writes: []string{"hello"}, want: "hello"},
+		{name: "exactly at limit", limit: 5, writes: []string{"hello"}, want: "hello"},
+		{
+			name:         "above limit",
+			limit:        4,
+			writes:       []string{"hello"},
+			want:         "hell",
+			wantExceeded: true,
+		},
+		{
+			name:         "cumulative writes above limit",
+			limit:        7,
+			writes:       []string{"hello", "world", "again"},
+			want:         "hellowo",
+			wantExceeded: true,
+		},
+		{
+			name:         "write with zero limit",
+			limit:        0,
+			writes:       []string{"a"},
+			want:         "",
+			wantExceeded: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := xutil.NewLimitedBuffer(tt.limit, xutil.WithTruncate())
+
+			for _, w := range tt.writes {
+				written, err := buf.Write([]byte(w))
+				require.NoError(t, err)
+				assert.Equal(t, len(w), written)
+			}
+
+			assert.Equal(t, tt.want, buf.String())
+			assert.Equal(t, tt.wantExceeded, buf.Exceeded())
+		})
+	}
+}
+
+func TestLimitedBuffer_CopyTruncate(t *testing.T) {
+	t.Parallel()
+
+	buf := xutil.NewLimitedBuffer(5, xutil.WithTruncate())
+
+	// Hide strings.Reader.WriteTo so io.Copy runs its own read/write loop.
+	written, err := io.Copy(buf, struct{ io.Reader }{strings.NewReader("hello world")})
+	require.NoError(t, err)
+	assert.Equal(t, int64(len("hello world")), written)
+	assert.Equal(t, "hello", buf.String())
+	assert.True(t, buf.Exceeded())
+}
+
+func TestLimitedBuffer_String(t *testing.T) {
+	t.Parallel()
+
+	buf := xutil.NewLimitedBuffer(10)
+
+	_, err := buf.Write([]byte("hello"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello", buf.String())
+}
