@@ -15,7 +15,9 @@ import (
 // never reaches the client, even without a Router.
 // A panic with http.ErrAbortHandler is re-raised, so the server still aborts the connection
 // silently as the handler intended. If the handler already started the response, the 500 status
-// cannot replace it. A nil logger falls back to slog.Default.
+// cannot replace it; behind a Router, httpserver.Abort then aborts the connection instead, so the
+// client does not mistake the truncated response for a complete one. A nil logger falls back to
+// slog.Default.
 func Recover(logger log.Logger) httpserver.Middleware {
 	if logger == nil {
 		logger = slog.Default()

@@ -3,6 +3,7 @@ package httpserver_test
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -254,4 +255,129 @@ func TestAbort_WrappedResponseWriter(t *testing.T) {
 	assert.Equal(t, errCause, logger.loggedErr)
 	assert.Equal(t, http.StatusBadRequest, outer.status)
 	assert.Equal(t, "application/problem+json; charset=utf-8", rec.Header().Get("Content-Type"))
+}
+
+func TestResponseWriter_Written(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		write func(writer *httpserver.ResponseWriter)
+		name  string
+		want  bool
+	}{
+		{name: "nothing written", write: func(*httpserver.ResponseWriter) {}},
+		{
+			name:  "informational status",
+			write: func(writer *httpserver.ResponseWriter) { writer.WriteHeader(http.StatusEarlyHints) },
+		},
+		{
+			name:  "final status",
+			write: func(writer *httpserver.ResponseWriter) { writer.WriteHeader(http.StatusOK) },
+			want:  true,
+		},
+		{
+			name:  "body",
+			write: func(writer *httpserver.ResponseWriter) { _, _ = writer.Write([]byte("a")) },
+			want:  true,
+		},
+		{
+			name:  "flush",
+			write: func(writer *httpserver.ResponseWriter) { writer.Flush() },
+			want:  true,
+		},
+		{
+			name:  "failed hijack",
+			write: func(writer *httpserver.ResponseWriter) { _, _, _ = writer.Hijack() },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			writer := &httpserver.ResponseWriter{ResponseWriter: httptest.NewRecorder()}
+			tt.write(writer)
+
+			assert.Equal(t, tt.want, writer.Written())
+		})
+	}
+}
+
+func TestResponseWriter_Abort_AfterWrite(t *testing.T) {
+	t.Parallel()
+
+	logger := &recordingLogger{}
+	rec := httptest.NewRecorder()
+	writer := &httpserver.ResponseWriter{ResponseWriter: rec, Log: logger}
+
+	_, err := writer.Write([]byte("partial"))
+	require.NoError(t, err)
+
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		writer.Abort(
+			httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+			http.StatusInternalServerError,
+			errCause,
+		)
+	})
+
+	assert.Equal(t, errCause, logger.loggedErr)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "partial", rec.Body.String(), "Abort must not append to a started response")
+}
+
+func TestAbort_WrappedResponseWriter_AfterWrite(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	outer := &statusRecorder{ResponseWriter: &httpserver.ResponseWriter{
+		ResponseWriter: rec,
+		Log:            &recordingLogger{},
+	}}
+
+	_, err := outer.Write([]byte("partial"))
+	require.NoError(t, err)
+
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		httpserver.Abort(
+			outer,
+			httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody),
+			http.StatusInternalServerError,
+			errCause,
+		)
+	})
+
+	assert.Zero(t, outer.status, "Abort must not send a second status")
+	assert.Equal(t, "partial", rec.Body.String())
+}
+
+func TestRouter_AbortAfterWrite_AbortsConnection(t *testing.T) {
+	t.Parallel()
+
+	router := httpserver.NewRouter()
+	router.HandleFunc("GET /", func(resp http.ResponseWriter, req *http.Request) {
+		_, _ = resp.Write([]byte("partial"))
+
+		// Send the partial body, so the client has started reading when the connection aborts.
+		http.NewResponseController(resp).Flush()
+
+		httpserver.Abort(resp, req, http.StatusInternalServerError, errCause)
+	})
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, http.NoBody)
+	require.NoError(t, err)
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF, "the client must see a truncated response")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "partial", string(body))
 }
