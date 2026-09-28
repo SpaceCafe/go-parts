@@ -3,6 +3,8 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -40,12 +42,40 @@ func (s YAMLSource) Load(target any) error {
 		opts = append(opts, yaml.DisallowUnknownField())
 	}
 
-	err = yaml.UnmarshalWithOptions(data, target, opts...)
+	decoder := yaml.NewDecoder(bytes.NewReader(data), opts...)
+
+	err = decoder.Decode(target)
 	if err != nil {
 		return fmt.Errorf("%w: unmarshal YAML: %w", ErrInvalidConfig, err)
 	}
 
-	return nil
+	return checkSingleYAMLDocument(decoder)
+}
+
+// checkSingleYAMLDocument rejects a document with content after the first one. A config file holds
+// one document: a second one does not override the first, so loading only the first would
+// silently drop whatever the second was meant to change. An empty document, such as the one after
+// a trailing "---", is allowed.
+func checkSingleYAMLDocument(decoder *yaml.Decoder) error {
+	for {
+		var extra any
+
+		err := decoder.Decode(&extra)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return fmt.Errorf("%w: unmarshal YAML: %w", ErrInvalidConfig, err)
+		}
+
+		if extra != nil {
+			return fmt.Errorf(
+				"%w: multiple YAML documents, a config file holds one",
+				ErrInvalidConfig,
+			)
+		}
+	}
 }
 
 func newYAMLSource(filename string, allowUnknownFields bool) (*YAMLSource, error) {
