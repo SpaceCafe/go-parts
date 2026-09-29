@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 )
 
 const defaultFilePermission = 0o600
@@ -231,7 +232,7 @@ func findConfigSource(name, configPath string, settings *options) (Source, error
 
 	for _, filePath := range configPaths(name, settings.workingDir) {
 		_, err := os.Stat(filePath)
-		if errors.Is(err, fs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 			continue
 		}
 
