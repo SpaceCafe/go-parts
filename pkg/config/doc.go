@@ -8,7 +8,8 @@
 // variables with a prefix.
 //
 // Sources are JSONSource, YAMLSource (built with the with_yaml tag) and EnvSource. File sources
-// reject unknown keys unless AllowUnknownFields is set. EnvSource maps field names to upper-case
+// reject unknown keys unless AllowUnknownFields is set. JSONSource reads a time.Duration as a
+// string such as "90s" or as integer nanoseconds. EnvSource maps field names to upper-case
 // variable names and supports the _FILE suffix for secrets mounted as files.
 //
 // GenerateTemplate writes a template with the defaults, and never overwrites an existing file.

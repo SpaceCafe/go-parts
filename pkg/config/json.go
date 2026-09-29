@@ -21,14 +21,38 @@ type JSONSource struct {
 	AllowUnknownFields bool
 }
 
+// GenerateTemplate writes target as JSON. Durations are written as strings such as "1m30s" rather
+// than the integer nanoseconds of encoding/json; Load reads both. Object keys are sorted.
 func (JSONSource) GenerateTemplate(target any, output io.Writer) error {
-	return json.NewEncoder(output).Encode(target)
+	data, err := json.Marshal(target)
+	if err != nil {
+		return fmt.Errorf("%w: marshal JSON: %w", ErrInvalidConfig, err)
+	}
+
+	data, err = rewriteJSONDurations(data, target, durationNanosToString)
+	if err != nil {
+		return err
+	}
+
+	_, err = output.Write(append(data, '\n'))
+	if err != nil {
+		return fmt.Errorf("write JSON template: %w", err)
+	}
+
+	return nil
 }
 
 func (s JSONSource) Load(target any) error {
 	data, err := os.ReadFile(s.Path)
 	if err != nil {
 		return fmt.Errorf("%w: read JSON file: %w", ErrConfigNotFound, err)
+	}
+
+	// encoding/json reads a time.Duration only as integer nanoseconds. Convert strings such as
+	// "90s" first, so config files can use the same format as environment variables and YAML.
+	data, err = rewriteJSONDurations(data, target, durationStringToNanos)
+	if err != nil {
+		return err
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
