@@ -10,10 +10,12 @@ import (
 	"time"
 )
 
-// sandboxSupported reports whether prlimit and landlock-restrict can restrict a process here.
-const sandboxSupported = true
-
-const listSeparator = string(os.PathListSeparator)
+const (
+	// sandboxSupported reports whether prlimit and landlock-restrict can restrict a process here.
+	sandboxSupported = true
+	listSeparator    = string(os.PathListSeparator)
+	quietArg         = "-quiet"
+)
 
 // sandboxArgs returns the helper binaries and their arguments that wrap a command. A helper binary
 // that is not configured is skipped, so its restrictions are not applied but the command still
@@ -64,6 +66,7 @@ func landlockArgs(cfg *Config, extraRWDirs ...string) []string {
 	args = append(
 		args,
 		cfg.LandlockBin,
+		quietArg,
 		"-ro.file="+strings.Join(cfg.Restrictions.ROFiles, listSeparator),
 		"-rw.file="+strings.Join(cfg.Restrictions.RWFiles, listSeparator),
 		"-ro.dir="+strings.Join(cfg.Restrictions.RODirs, listSeparator),
