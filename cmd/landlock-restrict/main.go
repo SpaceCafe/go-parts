@@ -64,6 +64,7 @@ type options struct {
 	restrictFS      bool
 	restrictBind    bool
 	restrictConnect bool
+	quiet           bool
 	strict          bool
 }
 
@@ -181,7 +182,8 @@ func applyRestrictions(opts *options) error {
 // mode fails when a requested kind cannot be enforced at all. Both modes then warn when a kind is
 // enforced with fewer rights than requested: strict mode accepts any kernel from the minimum ABI
 // on, so without the warning it would silently leave refer, truncate, ioctl or UNIX socket rights
-// unrestricted on an older kernel.
+// unrestricted on an older kernel. Quiet mode drops the warning, because the command shares stderr
+// with this wrapper and a caller that parses it would otherwise see lines it did not expect.
 func checkKernelSupport(opts *options) error {
 	if opts.strict {
 		err := requireMinimumABI(opts)
@@ -190,7 +192,9 @@ func checkKernelSupport(opts *options) error {
 		}
 	}
 
-	warnIfDegraded(opts)
+	if !opts.quiet {
+		warnIfDegraded(opts)
+	}
 
 	return nil
 }

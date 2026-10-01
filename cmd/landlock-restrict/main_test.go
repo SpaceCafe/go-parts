@@ -103,6 +103,13 @@ func TestCheckKernelSupport_WarnsAboutDegradedRights(t *testing.T) {
 
 		require.NoError(t, checkKernelSupport(&options{restrictFS: true, strict: strict}))
 		assert.Contains(t, output.String(), "filesystem rules need v9", "strict=%v", strict)
+
+		output.Reset()
+
+		quiet := &options{restrictFS: true, strict: strict, quiet: true}
+
+		require.NoError(t, checkKernelSupport(quiet))
+		assert.Empty(t, output.String(), "quiet, strict=%v", strict)
 	}
 
 	// Strict mode still refuses a kernel that cannot enforce a requested kind at all.
