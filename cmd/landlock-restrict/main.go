@@ -336,6 +336,8 @@ func parseFlags(args []string) *options {
 	flags.BoolVar(&opts.strict, "strict", false,
 		"fail instead of running a requested kind of restriction unenforced "+
 			"(filesystem needs Landlock ABI v1, TCP needs v4)")
+	flags.BoolVar(&opts.quiet, "quiet", false,
+		"do not print anything to stdout or stderr")
 
 	err := flags.Parse(args)
 	if err != nil {
