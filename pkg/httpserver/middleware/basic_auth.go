@@ -19,9 +19,16 @@ import (
 )
 
 const (
-	// authTokenScheme is the Authorization header scheme used for token authentication, kept distinct
-	// from the standard Basic scheme. RFC 9110 defines schemes as case-insensitive.
-	authTokenScheme = "Token"
+	// defaultTokenHeader and defaultTokenScheme send tokens as "Authorization: Token <token>", kept
+	// distinct from the standard Basic scheme.
+	defaultTokenHeader = "Authorization"
+	defaultTokenScheme = "Token"
+
+	// basicAuthScheme is the HTTP Basic scheme. RFC 9110 defines schemes as case-insensitive.
+	basicAuthScheme = "Basic"
+
+	// headerNamePattern matches the RFC 9110 token syntax shared by header names and auth schemes.
+	headerNamePattern = "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
 
 	// sha256TokenPrefix marks a configured token stored as the hex SHA-256 digest of the token.
 	sha256TokenPrefix = "sha256:"
@@ -41,6 +48,9 @@ var (
 	ErrMixedPasswordSchemes = errors.New(
 		"basic-auth: principals must all be plaintext or all bcrypt with the same cost",
 	)
+	ErrBasicTokenScheme = errors.New(
+		"basic-auth: token scheme must not be Basic in the Authorization header",
+	)
 
 	//nolint:gochecknoglobals // Maintain a set of predefined bcrypt prefixes that are used throughout the application.
 	BcryptHashPrefixes = []string{"$2a$", "$2b$", "$2x$", "$2y$"}
@@ -49,7 +59,7 @@ var (
 // Authenticator is a function type that validates a username and password, returning true if authentication succeeds.
 type Authenticator func(username, password string) bool
 
-// TokenAuthenticator validates a token from a "Token" Authorization header, returning true if
+// TokenAuthenticator validates a token read from BasicAuthConfig.TokenHeader, returning true if
 // authentication succeeds.
 type TokenAuthenticator func(token string) bool
 
@@ -67,6 +77,16 @@ type BasicAuthConfig struct {
 	// TokenAuthenticator validates a token when UseTokens is enabled. It is never consulted for
 	// HTTP Basic credentials.
 	TokenAuthenticator TokenAuthenticator `env:"-" json:"-" yaml:"-"`
+
+	// TokenHeader names the request header that carries the token, e.g. "Authorization" or
+	// "X-API-Key". Header names are case-insensitive.
+	TokenHeader string `json:"tokenHeader" yaml:"tokenHeader"`
+
+	// TokenScheme is the case-insensitive scheme that precedes the token, separated by one space, as
+	// in "Authorization: Token <token>". An empty scheme takes the whole header value as the token,
+	// as in "X-API-Key: <token>". The Basic scheme is rejected for the Authorization header, so
+	// tokens are never confused with HTTP Basic credentials.
+	TokenScheme string `json:"tokenScheme" yaml:"tokenScheme"`
 
 	// Tokens defines a list of pre-approved tokens for token-based authentication. Each entry is
 	// either the plaintext token or "sha256:" followed by the hex SHA-256 digest of the token.
@@ -86,13 +106,16 @@ func (c *BasicAuthConfig) SetDefaults() {
 	c.Tokens = []validate.Secret{}
 	c.Authenticator = configAuthenticator(c)
 	c.TokenAuthenticator = configTokenAuthenticator(c)
+	c.TokenHeader = defaultTokenHeader
+	c.TokenScheme = defaultTokenScheme
 	c.UseTokens = false
 }
 
 // Validate ensures the credential collections and Authenticator are non-nil, since a nil map or
 // slice signals an unconfigured struct rather than a deliberately empty one. TokenAuthenticator
-// must be non-nil when UseTokens is enabled. Both authenticators are excluded from config files, so
-// a struct decoded without SetDefaults fails here instead of panicking on the first request.
+// must be non-nil and TokenHeader must be a valid header name when UseTokens is enabled. Both
+// authenticators are excluded from config files, so a struct decoded without SetDefaults fails
+// here instead of panicking on the first request.
 func (c *BasicAuthConfig) Validate() error {
 	return errors.Join(
 		validate.Validate(
@@ -129,11 +152,39 @@ func (c *BasicAuthConfig) Validate() error {
 				return nil
 			},
 		),
+		c.validateTokenHeader(),
 	)
 }
 
-// BasicAuth returns middleware that authenticates each request. When token auth is enabled, a valid
-// token in a "Token" Authorization header is checked with TokenAuthenticator. HTTP Basic credentials
+// validateTokenHeader checks TokenHeader and TokenScheme against the RFC 9110 token syntax. An
+// empty TokenHeader passes while UseTokens is disabled, since the middleware never reads it then.
+func (c *BasicAuthConfig) validateTokenHeader() error {
+	if !c.UseTokens {
+		return nil
+	}
+
+	return errors.Join(
+		validate.Validate(
+			"token header",
+			c.TokenHeader,
+			validate.MatchRegex[string](headerNamePattern),
+		),
+		validate.Validate("token scheme", c.TokenScheme, func(value string) error {
+			if value == "" {
+				return nil
+			}
+
+			if isAuthorizationHeader(c.TokenHeader) && strings.EqualFold(value, basicAuthScheme) {
+				return ErrBasicTokenScheme
+			}
+
+			return validate.MatchRegex[string](headerNamePattern)(value)
+		}),
+	)
+}
+
+// BasicAuth returns middleware that authenticates each request. When token auth is enabled, a token
+// in TokenHeader, prefixed by TokenScheme, is checked with TokenAuthenticator. HTTP Basic credentials
 // are always checked with Authenticator, so tokens are never accepted as Basic passwords.
 // Unauthenticated requests are aborted with a 401 and the challenges of every enabled scheme.
 // Place RateLimit before BasicAuth: bcrypt principals make every failed login deliberately slow, so
@@ -152,10 +203,8 @@ func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 			if cfg.UseTokens && cfg.TokenAuthenticator != nil {
-				scheme, token, found := strings.Cut(req.Header.Get("Authorization"), " ")
-
-				if found && strings.EqualFold(scheme, authTokenScheme) &&
-					cfg.TokenAuthenticator(token) {
+				token, found := extractToken(req.Header.Get(cfg.TokenHeader), cfg.TokenScheme)
+				if found && cfg.TokenAuthenticator(token) {
 					next.ServeHTTP(resp, req)
 
 					return
@@ -169,9 +218,30 @@ func BasicAuth(cfg *BasicAuthConfig) httpserver.Middleware {
 				return
 			}
 
-			abortBasicAuth(resp, req, cfg.UseTokens)
+			abortBasicAuth(resp, req, cfg)
 		})
 	}
+}
+
+// extractToken returns the token from a header value. With a scheme, the value must be the
+// case-insensitive scheme, one space and a non-empty token. Without a scheme, the whole non-empty
+// value is the token.
+func extractToken(value, scheme string) (string, bool) {
+	if scheme == "" {
+		return value, value != ""
+	}
+
+	presented, token, found := strings.Cut(value, " ")
+	if !found || token == "" || !strings.EqualFold(presented, scheme) {
+		return "", false
+	}
+
+	return token, true
+}
+
+// isAuthorizationHeader reports whether name is the Authorization header in any letter case.
+func isAuthorizationHeader(name string) bool {
+	return strings.EqualFold(name, "Authorization")
 }
 
 // configAuthenticator builds the default Authenticator over BasicAuthConfig. It looks the username
@@ -310,12 +380,13 @@ func ValidatePasswords(expected, actual string) bool {
 }
 
 // abortBasicAuth writes a WWW-Authenticate challenge for every enabled scheme and aborts the
-// request with a 401.
-func abortBasicAuth(resp http.ResponseWriter, req *http.Request, useTokens bool) {
+// request with a 401. WWW-Authenticate only describes Authorization header schemes, so tokens in a
+// custom header or without a scheme get no challenge of their own.
+func abortBasicAuth(resp http.ResponseWriter, req *http.Request, cfg *BasicAuthConfig) {
 	resp.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 
-	if useTokens {
-		resp.Header().Add("WWW-Authenticate", `Token`)
+	if cfg.UseTokens && cfg.TokenScheme != "" && isAuthorizationHeader(cfg.TokenHeader) {
+		resp.Header().Add("WWW-Authenticate", cfg.TokenScheme)
 	}
 
 	httpserver.Abort(resp, req, http.StatusUnauthorized, nil)

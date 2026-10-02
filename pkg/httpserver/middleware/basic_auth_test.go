@@ -127,6 +127,94 @@ func TestBasicAuth(t *testing.T) {
 			},
 			wantStatus: http.StatusUnauthorized,
 		},
+		{
+			name: "empty token after scheme",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"Authorization": "Token ",
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "custom scheme in Authorization header",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.TokenScheme = "Bearer"
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"Authorization": "bearer valid-token",
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "default scheme rejected with custom scheme",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.TokenScheme = "Bearer"
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"Authorization": "Token valid-token",
+			},
+			wantStatus:     http.StatusUnauthorized,
+			wantAuthHeader: "Bearer",
+		},
+		{
+			name: "custom header without scheme",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.TokenHeader = "X-API-Key"
+				cfg.TokenScheme = ""
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"X-Api-Key": "valid-token",
+			},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "custom header without scheme rejects invalid token",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.TokenHeader = "X-API-Key"
+				cfg.TokenScheme = ""
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"X-API-Key": "Token valid-token",
+			},
+			wantStatus:     http.StatusUnauthorized,
+			wantAuthHeader: "Basic realm=\"Restricted\"",
+		},
+		{
+			name: "Authorization header ignored with custom header",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.TokenHeader = "X-API-Key"
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"Authorization": "Token valid-token",
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "custom header with scheme",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.Tokens = []validate.Secret{"valid-token"}
+				cfg.TokenHeader = "X-Auth"
+				cfg.TokenScheme = "Key"
+				cfg.UseTokens = true
+			},
+			headers: map[string]string{
+				"X-Auth": "Key valid-token",
+			},
+			wantStatus: http.StatusOK,
+		},
 	}
 
 	for _, tt := range tests {
@@ -213,6 +301,58 @@ func TestBasicAuthConfig_Validate_Authenticators(t *testing.T) {
 			},
 			wantErr: validate.ErrNil,
 		},
+		{
+			name: "empty token header without tokens",
+			cfg:  func(cfg *middleware.BasicAuthConfig) { cfg.TokenHeader = "" },
+		},
+		{
+			name: "empty token header with tokens",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenHeader = ""
+				cfg.UseTokens = true
+			},
+			wantErr: validate.ErrAllowedSymbols,
+		},
+		{
+			name: "invalid token header",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenHeader = "X API Key"
+				cfg.UseTokens = true
+			},
+			wantErr: validate.ErrAllowedSymbols,
+		},
+		{
+			name: "invalid token scheme",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenScheme = "Api Key"
+				cfg.UseTokens = true
+			},
+			wantErr: validate.ErrAllowedSymbols,
+		},
+		{
+			name: "empty token scheme",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenScheme = ""
+				cfg.UseTokens = true
+			},
+		},
+		{
+			name: "basic token scheme in Authorization header",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenHeader = "authorization"
+				cfg.TokenScheme = "basic"
+				cfg.UseTokens = true
+			},
+			wantErr: middleware.ErrBasicTokenScheme,
+		},
+		{
+			name: "basic token scheme in custom header",
+			cfg: func(cfg *middleware.BasicAuthConfig) {
+				cfg.TokenHeader = "X-Auth"
+				cfg.TokenScheme = "Basic"
+				cfg.UseTokens = true
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -274,6 +414,36 @@ func TestBasicAuth_SHA256Token(t *testing.T) {
 
 		assert.Equal(t, wantStatus, rec.Code, "token %q", token)
 	}
+}
+
+func TestBasicAuth_CustomTokenHeaderChallenge(t *testing.T) {
+	t.Parallel()
+
+	cfg := &middleware.BasicAuthConfig{}
+	cfg.SetDefaults()
+	cfg.Tokens = []validate.Secret{"valid-token"}
+	cfg.TokenHeader = "X-API-Key"
+	cfg.UseTokens = true
+
+	handler := middleware.BasicAuth(
+		cfg,
+	)(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(
+		t,
+		[]string{`Basic realm="Restricted"`},
+		rec.Header().Values("WWW-Authenticate"),
+		"a custom token header has no Authorization scheme to challenge",
+	)
 }
 
 func TestBasicAuthConfig_Validate_TokenFormat(t *testing.T) {
